@@ -54,26 +54,9 @@ export function renderSignalCards(container, signals) {
     });
   });
 
-  // Navigate to pair on card header click
-  container.querySelectorAll('.signal-card-pair').forEach(el => {
-    el.addEventListener('click', () => {
-      store.set('selectedPair', el.dataset.pair);
-      store.set('ui.currentPage', 'trade');
-    });
-  });
+  const cleanup = bindSignalCardEvents(container, signals);
 
-  // Live price updates on cards
-  store.subscribe('quotes', () => {
-    const quotes = store.get('quotes') || {};
-    signals.forEach((sig, i) => {
-      const q = quotes[sig.pair];
-      if (!q) return;
-      const bidEl = container.querySelector(`#sig-bid-${i}`);
-      const askEl = container.querySelector(`#sig-ask-${i}`);
-      if (bidEl) bidEl.textContent = q.bid || q.close || '—';
-      if (askEl) askEl.textContent = q.ask || q.close || '—';
-    });
-  }, 'signalcards-quotes');
+  return cleanup;
 }
 
 function renderCard(sig, index) {
@@ -230,8 +213,8 @@ export function renderSignalCardsIndexed(container, signals) {
     </div>
   `;
 
-  // Reuse event binding from renderSignalCards
-  bindSignalCardEvents(container, signals);
+  const cleanup = bindSignalCardEvents(container, signals);
+  return cleanup;
 }
 
 function bindSignalCardEvents(container, signals) {
@@ -271,6 +254,8 @@ function bindSignalCardEvents(container, signals) {
     });
   });
 
+  const instanceId = `sigcards-${Math.random().toString(36).substr(2, 5)}`;
+
   // Live price updates
   store.subscribe('quotes', () => {
     const quotes = store.get('quotes') || {};
@@ -282,5 +267,9 @@ function bindSignalCardEvents(container, signals) {
       if (bidEl) bidEl.textContent = q.bid || q.close || '—';
       if (askEl) askEl.textContent = q.ask || q.close || '—';
     });
-  }, 'signalcards-quotes');
+  }, `${instanceId}-quotes`);
+
+  return () => {
+    store.unsubscribe(`${instanceId}-quotes`);
+  };
 }

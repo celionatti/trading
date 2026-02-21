@@ -139,7 +139,25 @@ export async function fetchIndicator(symbol, indicator, interval = '1h', params 
   }
 }
 
+export async function fetchEconomicCalendar() {
+  // Twelve Data doesn't provide a free economic calendar top-level
+  // We'll generate a realistic mock one for this terminal
+  return generateMockCalendar();
+}
+
 // === Mock/Default Data ===
+
+function generateMockCalendar() {
+  const events = [
+    { id: 1, event: 'Non-Farm Payrolls', country: 'USD', impact: 'high', previous: '353k', estimate: '185k', actual: null, time: '13:30', date: new Date().toISOString() },
+    { id: 2, event: 'CPI m/m', country: 'USD', impact: 'high', previous: '0.3%', estimate: '0.4%', actual: null, time: '13:30', date: new Date().toISOString() },
+    { id: 3, event: 'Unemployment Rate', country: 'USD', impact: 'high', previous: '3.7%', estimate: '3.7%', actual: null, time: '13:30', date: new Date().toISOString() },
+    { id: 4, event: 'ECB Press Conference', country: 'EUR', impact: 'high', previous: '—', estimate: '—', actual: null, time: '14:45', date: new Date().toISOString() },
+    { id: 5, event: 'BOE Interest Rate Decision', country: 'GBP', impact: 'high', previous: '5.25%', estimate: '5.25%', actual: null, time: '12:00', date: new Date().toISOString() },
+    { id: 6, event: 'Retail Sales m/m', country: 'AUD', impact: 'medium', previous: '1.1%', estimate: '0.4%', actual: '0.3%', time: '00:30', date: new Date().toISOString() },
+  ];
+  return events;
+}
 
 function getDefaultPairs() {
   return [

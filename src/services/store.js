@@ -24,11 +24,13 @@ const defaultState = {
   // Selected pair
   selectedPair: 'EUR/USD',
 
-  // Open positions
+  // Open positions and Pending orders
   positions: [],
-
-  // Trade history
+  orders: [],
+  
+  // Trade history and Calendar
   history: [],
+  calendar: [],
 
   // Settings
   settings: {
@@ -41,6 +43,7 @@ const defaultState = {
     theme: 'dark',
     leverage: 100,
     currency: 'USD',
+    riskPercent: 1, // Default risk 1%
   },
 
   // UI state
@@ -147,6 +150,10 @@ class Store {
     return () => {
       map.delete(listenerId);
     };
+  }
+
+  unsubscribe(id) {
+    this.listeners.forEach(map => map.delete(id));
   }
 
   notify(key) {

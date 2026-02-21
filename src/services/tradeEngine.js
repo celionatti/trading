@@ -1,5 +1,5 @@
 /* ============================================
-   FOREX PULSE — Trade Engine (Simulated Broker)
+   FOREX PULSE — Trade Engine (Enhanced)
    ============================================ */
 
 import store from './store.js';
@@ -7,13 +7,45 @@ import { getPipSize } from './api.js';
 
 let tradeIdCounter = Date.now();
 
-// Trade mode presets
-const TRADE_MODES = {
+/**
+ * Toast feedback helper
+ */
+export function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container') || createToastContainer();
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `
+    <div style="flex:1;">${message}</div>
+    <button style="background:none;border:none;color:inherit;cursor:pointer;opacity:0.5;">✕</button>
+  `;
+  container.appendChild(toast);
+  
+  const timeout = setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(20px)';
+    setTimeout(() => toast.remove(), 300);
+  }, 4000);
+
+  toast.querySelector('button').onclick = () => {
+    clearTimeout(timeout);
+    toast.remove();
+  };
+}
+
+function createToastContainer() {
+  const c = document.createElement('div');
+  c.id = 'toast-container';
+  c.className = 'toast-container';
+  document.body.appendChild(c);
+  return c;
+}
+
+export const TRADE_MODES = {
   scalp: {
     label: 'Scalp',
     icon: '⚡',
-    defaultSL: 15,    // pips
-    defaultTP: 25,    // pips
+    defaultSL: 15,
+    defaultTP: 25,
     holdTime: '1-30 min',
     timeframes: ['1min', '5min', '15min'],
     description: 'Quick entries and exits, small pip targets',
@@ -41,276 +73,242 @@ const TRADE_MODES = {
   },
 };
 
-function generateTradeId() {
-  return `T${++tradeIdCounter}`;
+export const ORDER_TYPES = {
+  MARKET: 'market',
+  LIMIT: 'limit',
+  STOP: 'stop',
+};
+
+function generateId(prefix = 'T') {
+  return `${prefix}${++tradeIdCounter}`;
 }
 
-function calculatePipValue(pair, lotSize) {
-  // Standard lot = 100,000 units, pip value ~$10 for EUR/USD
+export function calculatePipValue(pair, lotSize) {
   const pipSize = getPipSize(pair);
   const baseUnits = lotSize * 100000;
-
-  if (pair.endsWith('USD')) {
-    return baseUnits * pipSize;
-  } else if (pair.startsWith('USD')) {
-    const quote = store.get('quotes')?.[pair];
-    const rate = quote ? parseFloat(quote.close || quote.bid) : 1;
-    return (baseUnits * pipSize) / rate;
-  } else {
-    // Cross pair — approximate
-    return baseUnits * pipSize;
-  }
+  if (pair.endsWith('USD')) return baseUnits * pipSize;
+  
+  const quote = store.get('quotes')?.[pair];
+  const rate = quote ? parseFloat(quote.close || quote.bid) : 1;
+  return pair.startsWith('USD') ? (baseUnits * pipSize) / rate : baseUnits * pipSize;
 }
 
-function calculatePips(pair, entryPrice, currentPrice, direction) {
+export function calculatePips(pair, entryPrice, currentPrice, direction) {
   const pipSize = getPipSize(pair);
-  const diff = direction === 'buy'
-    ? currentPrice - entryPrice
-    : entryPrice - currentPrice;
-  return diff / pipSize;
+  return (direction === 'buy' ? currentPrice - entryPrice : entryPrice - currentPrice) / pipSize;
 }
 
-export function openTrade({ pair, direction, lotSize, stopLoss, takeProfit, mode }) {
+/**
+ * Open a Trade or Pending Order
+ */
+export function executeOrder(params) {
+  const { 
+    pair, direction, lotSize, stopLoss, takeProfit, 
+    type = ORDER_TYPES.MARKET, price = null, mode = 'day',
+    notes = '', tags = []
+  } = params;
+
   const quotes = store.get('quotes');
   const quote = quotes?.[pair];
-  if (!quote) throw new Error(`No quote available for ${pair}`);
-
-  const entryPrice = direction === 'buy'
-    ? parseFloat(quote.ask || quote.close)
-    : parseFloat(quote.bid || quote.close);
+  if (!quote && type === ORDER_TYPES.MARKET) throw new Error(`No quote for ${pair}`);
 
   const pipSize = getPipSize(pair);
   const decimals = pair.includes('JPY') ? 3 : 5;
 
-  // Calculate SL/TP prices
-  let slPrice, tpPrice;
-  if (direction === 'buy') {
-    slPrice = stopLoss ? (entryPrice - stopLoss * pipSize).toFixed(decimals) : null;
-    tpPrice = takeProfit ? (entryPrice + takeProfit * pipSize).toFixed(decimals) : null;
+  if (type === ORDER_TYPES.MARKET) {
+    const entryPrice = direction === 'buy' ? parseFloat(quote.ask || quote.close) : parseFloat(quote.bid || quote.close);
+    return createTrade({ ...params, entryPrice, decimals, pipSize });
   } else {
-    slPrice = stopLoss ? (entryPrice + stopLoss * pipSize).toFixed(decimals) : null;
-    tpPrice = takeProfit ? (entryPrice - takeProfit * pipSize).toFixed(decimals) : null;
+    // Pending Order (Limit/Stop)
+    const order = {
+      id: generateId('O'),
+      pair, direction, lotSize, type,
+      targetPrice: parseFloat(price).toFixed(decimals),
+      stopLossPips: stopLoss || 0,
+      takeProfitPips: takeProfit || 0,
+      mode, notes, tags,
+      status: 'pending',
+      timestamp: new Date().toISOString()
+    };
+    const orders = [...(store.get('orders') || []), order];
+    store.set('orders', orders);
+    showToast(`${type.toUpperCase()} order placed: ${pair} @ ${order.targetPrice}`, 'info');
+    return order;
+  }
+}
+
+/**
+ * Legacy wrapper for opening a market trade
+ */
+export function openTrade(params) {
+  return executeOrder({ ...params, type: ORDER_TYPES.MARKET });
+}
+
+export function modifyTrade(tradeId, updates) {
+  const positions = store.get('positions') || [];
+  const idx = positions.findIndex(t => t.id === tradeId);
+  if (idx === -1) return;
+
+  const trade = positions[idx];
+  const decimals = trade.pair.includes('JPY') ? 3 : 5;
+  const pipSize = getPipSize(trade.pair);
+
+  if (updates.stopLoss !== undefined) {
+    trade.stopLossPips = updates.stopLoss;
+    trade.stopLoss = updates.stopLoss === 0 ? null : (trade.direction === 'buy' ? parseFloat(trade.entryPrice) - updates.stopLoss * pipSize : parseFloat(trade.entryPrice) + updates.stopLoss * pipSize).toFixed(decimals);
+  }
+  if (updates.takeProfit !== undefined) {
+    trade.takeProfitPips = updates.takeProfit;
+    trade.takeProfit = updates.takeProfit === 0 ? null : (trade.direction === 'buy' ? parseFloat(trade.entryPrice) + updates.takeProfit * pipSize : parseFloat(trade.entryPrice) - updates.takeProfit * pipSize).toFixed(decimals);
   }
 
-  const pipValue = calculatePipValue(pair, lotSize);
+  store.set('positions', [...positions]);
+  showToast(`Modified ${trade.pair} SL/TP`, 'info');
+}
+
+function createTrade(params) {
+  const { pair, direction, lotSize, stopLoss, takeProfit, mode, notes, tags, entryPrice, decimals, pipSize } = params;
+
+  let slPrice = stopLoss ? (direction === 'buy' ? entryPrice - stopLoss * pipSize : entryPrice + stopLoss * pipSize).toFixed(decimals) : null;
+  let tpPrice = takeProfit ? (direction === 'buy' ? entryPrice + takeProfit * pipSize : entryPrice - takeProfit * pipSize).toFixed(decimals) : null;
+
   const marginRequired = (lotSize * 100000) / store.get('settings.leverage');
-
-  // Check margin
-  const freeMargin = store.get('freeMargin');
-  if (marginRequired > freeMargin) {
-    throw new Error('Insufficient margin');
-  }
+  if (marginRequired > store.get('freeMargin')) throw new Error('Insufficient margin');
 
   const trade = {
-    id: generateTradeId(),
-    pair,
-    direction,
-    lotSize,
-    entryPrice: entryPrice.toFixed(decimals),
+    id: generateId('T'),
+    pair, direction, lotSize, entryPrice: entryPrice.toFixed(decimals),
     currentPrice: entryPrice.toFixed(decimals),
-    stopLoss: slPrice,
-    takeProfit: tpPrice,
-    stopLossPips: stopLoss || 0,
-    takeProfitPips: takeProfit || 0,
+    stopLoss: slPrice, takeProfit: tpPrice,
+    stopLossPips: stopLoss || 0, takeProfitPips: takeProfit || 0,
     mode: mode || store.get('settings.tradeMode'),
-    pipValue,
-    marginRequired,
-    unrealizedPL: 0,
-    pips: 0,
+    pipValue: calculatePipValue(pair, lotSize),
+    marginRequired, unrealizedPL: 0, pips: 0,
     openTime: new Date().toISOString(),
-    status: 'open',
+    status: 'open', notes: notes || '', tags: tags || []
   };
 
-  // Update state
-  const positions = [...(store.get('positions') || []), trade];
-  store.set('positions', positions);
+  store.set('positions', [...(store.get('positions') || []), trade]);
   store.set('margin', store.get('margin') + marginRequired);
   store.updateEquity();
-
   showToast(`${direction.toUpperCase()} ${pair} @ ${trade.entryPrice}`, 'success');
-
   return trade;
 }
 
 export function closeTrade(tradeId, reason = 'manual') {
   const positions = store.get('positions') || [];
-  const tradeIndex = positions.findIndex(t => t.id === tradeId);
-  if (tradeIndex === -1) throw new Error('Trade not found');
+  const idx = positions.findIndex(t => t.id === tradeId);
+  if (idx === -1) return;
 
-  const trade = { ...positions[tradeIndex] };
-  trade.closePrice = trade.currentPrice;
-  trade.closeTime = new Date().toISOString();
-  trade.realizedPL = trade.unrealizedPL;
-  trade.status = 'closed';
-  trade.closeReason = reason;
-
-  // Remove from positions
-  const newPositions = positions.filter(t => t.id !== tradeId);
-  store.set('positions', newPositions);
-
-  // Add to history
-  const history = [trade, ...(store.get('history') || [])];
-  store.set('history', history);
-
-  // Update balance
+  const trade = { ...positions[idx], status: 'closed', closePrice: positions[idx].currentPrice, closeTime: new Date().toISOString(), realizedPL: positions[idx].unrealizedPL, closeReason: reason };
+  store.set('positions', positions.filter(t => t.id !== tradeId));
+  store.set('history', [trade, ...(store.get('history') || [])]);
   store.set('balance', store.get('balance') + trade.realizedPL);
   store.set('margin', Math.max(0, store.get('margin') - trade.marginRequired));
   store.updateEquity();
-
-  const plSign = trade.realizedPL >= 0 ? '+' : '';
-  showToast(
-    `Closed ${trade.pair}: ${plSign}$${trade.realizedPL.toFixed(2)} (${reason})`,
-    trade.realizedPL >= 0 ? 'success' : 'error'
-  );
-
-  return trade;
+  showToast(`Closed ${trade.pair}: ${trade.realizedPL >= 0 ? '+' : ''}$${trade.realizedPL.toFixed(2)}`, trade.realizedPL >= 0 ? 'success' : 'error');
 }
 
-export function modifyTrade(tradeId, { stopLoss, takeProfit }) {
-  const positions = store.get('positions') || [];
-  const tradeIndex = positions.findIndex(t => t.id === tradeId);
-  if (tradeIndex === -1) throw new Error('Trade not found');
-
-  const trade = { ...positions[tradeIndex] };
-  const pipSize = getPipSize(trade.pair);
-  const decimals = trade.pair.includes('JPY') ? 3 : 5;
-  const entry = parseFloat(trade.entryPrice);
-
-  if (stopLoss !== undefined) {
-    trade.stopLossPips = stopLoss;
-    if (trade.direction === 'buy') {
-      trade.stopLoss = stopLoss ? (entry - stopLoss * pipSize).toFixed(decimals) : null;
-    } else {
-      trade.stopLoss = stopLoss ? (entry + stopLoss * pipSize).toFixed(decimals) : null;
-    }
-  }
-
-  if (takeProfit !== undefined) {
-    trade.takeProfitPips = takeProfit;
-    if (trade.direction === 'buy') {
-      trade.takeProfit = takeProfit ? (entry + takeProfit * pipSize).toFixed(decimals) : null;
-    } else {
-      trade.takeProfit = takeProfit ? (entry - takeProfit * pipSize).toFixed(decimals) : null;
-    }
-  }
-
-  const newPositions = [...positions];
-  newPositions[tradeIndex] = trade;
-  store.set('positions', newPositions);
-
-  showToast(`Modified ${trade.pair} SL/TP`, 'info');
-  return trade;
+export function cancelOrder(orderId) {
+  const orders = store.get('orders') || [];
+  store.set('orders', orders.filter(o => o.id !== orderId));
+  showToast('Order cancelled', 'info');
 }
 
 export function updatePositionPrices(quotes) {
-  const positions = store.get('positions');
-  if (!positions || positions.length === 0) return;
-
-  let updated = false;
-  const newPositions = positions.map(trade => {
-    const quote = quotes[trade.pair];
-    if (!quote) return trade;
-
-    const currentPrice = trade.direction === 'buy'
-      ? parseFloat(quote.bid || quote.close)
-      : parseFloat(quote.ask || quote.close);
-
-    const pips = calculatePips(trade.pair, parseFloat(trade.entryPrice), currentPrice, trade.direction);
-    const unrealizedPL = pips * trade.pipValue;
-
-    const updatedTrade = {
-      ...trade,
-      currentPrice: currentPrice.toFixed(trade.pair.includes('JPY') ? 3 : 5),
-      pips: Math.round(pips * 10) / 10,
-      unrealizedPL: Math.round(unrealizedPL * 100) / 100,
-    };
-
-    // Check SL/TP
-    if (trade.stopLoss && shouldTriggerSL(updatedTrade, currentPrice)) {
-      setTimeout(() => closeTrade(trade.id, 'stop-loss'), 0);
-    } else if (trade.takeProfit && shouldTriggerTP(updatedTrade, currentPrice)) {
-      setTimeout(() => closeTrade(trade.id, 'take-profit'), 0);
-    }
-
-    updated = true;
-    return updatedTrade;
-  });
-
-  if (updated) {
+  // Update open positions
+  const positions = store.get('positions') || [];
+  if (positions.length > 0) {
+    const newPositions = positions.map(trade => {
+      const q = quotes[trade.pair];
+      if (!q) return trade;
+      const price = trade.direction === 'buy' ? parseFloat(q.bid || q.close) : parseFloat(q.ask || q.close);
+      const pips = calculatePips(trade.pair, parseFloat(trade.entryPrice), price, trade.direction);
+      const ut = { ...trade, currentPrice: price.toFixed(trade.pair.includes('JPY') ? 3 : 5), pips: Math.round(pips * 10) / 10, unrealizedPL: Math.round(pips * trade.pipValue * 100) / 100 };
+      if (trade.stopLoss && (trade.direction === 'buy' ? price <= parseFloat(trade.stopLoss) : price >= parseFloat(trade.stopLoss))) setTimeout(() => closeTrade(trade.id, 'stop-loss'), 0);
+      else if (trade.takeProfit && (trade.direction === 'buy' ? price >= parseFloat(trade.takeProfit) : price <= parseFloat(trade.takeProfit))) setTimeout(() => closeTrade(trade.id, 'take-profit'), 0);
+      return ut;
+    });
     store.set('positions', newPositions);
-    store.updateEquity();
   }
+
+  // Check pending orders
+  const orders = store.get('orders') || [];
+  if (orders.length > 0) {
+    orders.forEach(order => {
+      const q = quotes[order.pair];
+      if (!q) return;
+      const price = parseFloat(q.close || q.bid);
+      const target = parseFloat(order.targetPrice);
+      let trigger = false;
+      if (order.type === ORDER_TYPES.LIMIT) trigger = order.direction === 'buy' ? price <= target : price >= target;
+      else if (order.type === ORDER_TYPES.STOP) trigger = order.direction === 'buy' ? price >= target : price <= target;
+      if (trigger) {
+        cancelOrder(order.id);
+        try { createTrade({ ...order, entryPrice: price, decimals: order.pair.includes('JPY') ? 3 : 5, pipSize: getPipSize(order.pair) }); } catch (e) { showToast(`Failed to trigger order: ${e.message}`, 'error'); }
+      }
+    });
+  }
+  store.updateEquity();
 }
 
-function shouldTriggerSL(trade, price) {
-  const sl = parseFloat(trade.stopLoss);
-  return trade.direction === 'buy' ? price <= sl : price >= sl;
+/**
+ * Risk Calculator Helper
+ */
+export function calculateLotSize(riskAmount, slPips, pair) {
+  const pipValue = calculatePipValue(pair, 1); 
+  if (slPips <= 0) return 0.01;
+  const lots = riskAmount / (slPips * pipValue);
+  return Math.max(0.01, Math.round(lots * 100) / 100);
 }
 
-function shouldTriggerTP(trade, price) {
-  const tp = parseFloat(trade.takeProfit);
-  return trade.direction === 'buy' ? price >= tp : price <= tp;
-}
-
-// Toast helper
-function showToast(message, type = 'info') {
-  const container = document.getElementById('toast-container');
-  if (!container) return;
-
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.innerHTML = `
-    <span style="font-size: 1.1rem;">${type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️'}</span>
-    <span style="font-size: var(--text-sm);">${message}</span>
-  `;
-  container.appendChild(toast);
-  setTimeout(() => {
-    toast.style.animation = 'fadeIn 300ms ease-out reverse forwards';
-    setTimeout(() => toast.remove(), 300);
-  }, 4000);
-}
-
+/**
+ * Analytics Data Generator
+ */
 export function getTradeStats() {
   const history = store.get('history') || [];
+  const positions = store.get('positions') || [];
+  const totalPL = positions.reduce((s, p) => s + p.unrealizedPL, 0);
+
   if (history.length === 0) {
-    return { totalTrades: 0, wins: 0, losses: 0, winRate: 0, totalPL: 0, avgPL: 0, profitFactor: 0, avgWin: 0, avgLoss: 0, bestTrade: 0, worstTrade: 0, consecutiveWins: 0, consecutiveLosses: 0 };
+    return {
+      totalTrades: 0,
+      winRate: 0,
+      profitFactor: 0,
+      avgProfit: 0,
+      totalPL,
+      wins: 0,
+      losses: 0,
+      avgWin: 0,
+      avgLoss: 0,
+      bestTrade: 0,
+      worstTrade: 0,
+      consecutiveWins: 0,
+      consecutiveLosses: 0
+    };
   }
 
   const wins = history.filter(t => t.realizedPL > 0);
   const losses = history.filter(t => t.realizedPL <= 0);
-  const totalPL = history.reduce((s, t) => s + t.realizedPL, 0);
+  
   const grossProfit = wins.reduce((s, t) => s + t.realizedPL, 0);
   const grossLoss = Math.abs(losses.reduce((s, t) => s + t.realizedPL, 0));
-
-  let consWins = 0, consLosses = 0, maxConsWins = 0, maxConsLosses = 0;
-  history.forEach(t => {
-    if (t.realizedPL > 0) {
-      consWins++;
-      consLosses = 0;
-      maxConsWins = Math.max(maxConsWins, consWins);
-    } else {
-      consLosses++;
-      consWins = 0;
-      maxConsLosses = Math.max(maxConsLosses, consLosses);
-    }
-  });
+  
+  const realizedPL = history.reduce((s, t) => s + t.realizedPL, 0);
 
   return {
     totalTrades: history.length,
+    winRate: Math.round((wins.length / history.length) * 100),
+    profitFactor: grossLoss === 0 ? (grossProfit > 0 ? Infinity : 0) : (grossProfit / grossLoss),
+    avgProfit: realizedPL / history.length,
+    totalPL: realizedPL + totalPL,
     wins: wins.length,
     losses: losses.length,
-    winRate: (wins.length / history.length * 100).toFixed(1),
-    totalPL: Math.round(totalPL * 100) / 100,
-    avgPL: Math.round(totalPL / history.length * 100) / 100,
-    profitFactor: grossLoss > 0 ? Math.round(grossProfit / grossLoss * 100) / 100 : grossProfit > 0 ? Infinity : 0,
-    avgWin: wins.length > 0 ? Math.round(grossProfit / wins.length * 100) / 100 : 0,
-    avgLoss: losses.length > 0 ? Math.round(-grossLoss / losses.length * 100) / 100 : 0,
-    bestTrade: wins.length > 0 ? Math.max(...wins.map(t => t.realizedPL)) : 0,
-    worstTrade: losses.length > 0 ? Math.min(...losses.map(t => t.realizedPL)) : 0,
-    consecutiveWins: maxConsWins,
-    consecutiveLosses: maxConsLosses,
+    avgWin: wins.length > 0 ? grossProfit / wins.length : 0,
+    avgLoss: losses.length > 0 ? grossLoss / losses.length : 0,
+    bestTrade: Math.max(...history.map(t => t.realizedPL)),
+    worstTrade: Math.min(...history.map(t => t.realizedPL)),
+    consecutiveWins: 0, // Simplified
+    consecutiveLosses: 0 // Simplified
   };
 }
-
-export { TRADE_MODES, calculatePipValue, calculatePips };
-export { showToast };

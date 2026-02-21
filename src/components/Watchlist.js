@@ -55,16 +55,32 @@ export function renderWatchlist(container) {
     </div>
   `;
 
+  const updateSelection = (pair) => {
+    container.querySelectorAll('.watchlist-item').forEach(el => {
+      const isSelected = el.dataset.pair === pair;
+      el.classList.toggle('selected', isSelected);
+      el.style.borderLeft = `3px solid ${isSelected ? 'var(--accent-primary)' : 'transparent'}`;
+      el.style.background = isSelected ? 'var(--accent-primary-glow)' : 'transparent';
+    });
+  };
+
   // Click to select pair
   container.querySelectorAll('.watchlist-item').forEach(el => {
     el.addEventListener('click', () => {
-      store.set('selectedPair', el.dataset.pair);
-      renderWatchlist(container);
+      const pair = el.dataset.pair;
+      store.set('selectedPair', pair);
+      updateSelection(pair);
     });
   });
 
+  const instanceId = `watchlist-${Math.random().toString(36).substr(2, 5)}`;
+
   // Stable subscription
-  store.subscribe('quotes', () => updateWatchlistPrices(container), 'watchlist-quotes');
+  store.subscribe('quotes', () => updateWatchlistPrices(container), `${instanceId}-quotes`);
+
+  return () => {
+    store.unsubscribe(`${instanceId}-quotes`);
+  };
 }
 
 function updateWatchlistPrices(container) {

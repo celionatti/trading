@@ -1,9 +1,9 @@
 /* ============================================
-   FOREX PULSE — Trade Form Component (Optimized)
+   FOREX PULSE — Trade Form (Advanced)
    ============================================ */
 
 import store from '../services/store.js';
-import { openTrade, TRADE_MODES } from '../services/tradeEngine.js';
+import { executeOrder, calculateLotSize, ORDER_TYPES, TRADE_MODES } from '../services/tradeEngine.js';
 import { getPipSize } from '../services/api.js';
 
 export function renderTradeForm(container) {
@@ -13,197 +13,207 @@ export function renderTradeForm(container) {
   const quote = quotes[pair];
   const mode = settings.tradeMode;
   const modeConfig = TRADE_MODES[mode];
+  
+  let orderType = ORDER_TYPES.MARKET;
+  let useRiskPercent = false;
 
   container.innerHTML = `
     <div class="card">
       <div class="card-header">
-        <span class="card-title">New Order</span>
-        <span class="badge badge-info">${modeConfig.icon} ${modeConfig.label}</span>
+        <span class="card-title">Order Entry</span>
+        <div class="tabs tabs-sm" id="order-type-tabs">
+          <button class="tab active" data-type="market">Market</button>
+          <button class="tab" data-type="limit">Limit</button>
+          <button class="tab" data-type="stop">Stop</button>
+        </div>
       </div>
 
-      <!-- Pair Selector -->
+      <!-- Pair & Price -->
+      <div style="display:flex;justify-content:space-between;margin-bottom:var(--space-3);align-items:center;">
+        <span style="font-weight:var(--font-bold);">${pair}</span>
+        <div class="mono" style="font-size:var(--text-sm);">
+          <span id="form-bid" style="color:var(--color-loss);">${quote ? (quote.bid || quote.close) : '—'}</span>
+          /
+          <span id="form-ask" style="color:var(--color-profit);">${quote ? (quote.ask || quote.close) : '—'}</span>
+        </div>
+      </div>
+
+      <!-- Target Price (Hidden for Market) -->
+      <div class="input-group" id="target-price-group" style="display:none;margin-bottom:var(--space-3);">
+        <label class="input-label">Target Price</label>
+        <input type="number" class="input input-sm" id="trade-price" step="0.00001" placeholder="Enter target price" />
+      </div>
+
+      <!-- Lot Management -->
       <div class="input-group" style="margin-bottom:var(--space-3);">
-        <label class="input-label">Currency Pair</label>
-        <select class="select" id="trade-pair">
-          ${(store.get('watchlist') || []).map(p => `
-            <option value="${p}" ${p === pair ? 'selected' : ''}>${p}</option>
-          `).join('')}
-        </select>
-      </div>
-
-      <!-- Live Price Display -->
-      <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-3);">
-        <div style="flex:1;padding:var(--space-2);background:var(--color-loss-bg);border-radius:var(--radius-md);text-align:center;border:1px solid var(--border-loss);">
-          <div style="font-size:var(--text-xs);color:var(--color-loss);margin-bottom:2px;">BID</div>
-          <div class="mono" style="font-size:var(--text-md);font-weight:var(--font-bold);color:var(--color-loss);" id="trade-bid">
-            ${quote ? (quote.bid || quote.close) : '—'}
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label class="input-label">Position Size</label>
+          <label style="font-size:var(--text-xxs);display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" id="use-risk-percent" /> Use Risk %
+          </label>
+        </div>
+        
+        <div id="lot-input-wrapper">
+          <div style="display:flex;gap:var(--space-2);">
+            <input type="number" class="input input-sm" id="trade-lot" value="${settings.defaultLotSize}" step="0.01" style="flex:1;" />
+            <div style="display:flex;gap:2px;">
+              <button class="btn btn-ghost btn-sm lot-preset" data-lot="0.01">.01</button>
+              <button class="btn btn-ghost btn-sm lot-preset" data-lot="0.1">.10</button>
+              <button class="btn btn-ghost btn-sm lot-preset" data-lot="1">1.0</button>
+            </div>
           </div>
         </div>
-        <div style="flex:1;padding:var(--space-2);background:var(--color-profit-bg);border-radius:var(--radius-md);text-align:center;border:1px solid var(--border-profit);">
-          <div style="font-size:var(--text-xs);color:var(--color-profit);margin-bottom:2px;">ASK</div>
-          <div class="mono" style="font-size:var(--text-md);font-weight:var(--font-bold);color:var(--color-profit);" id="trade-ask">
-            ${quote ? (quote.ask || quote.close) : '—'}
+
+        <div id="risk-input-wrapper" style="display:none;">
+          <div style="display:flex;gap:var(--space-2);align-items:center;">
+            <input type="number" class="input input-sm" id="trade-risk-percent" value="${settings.riskPercent || 1}" step="0.1" style="flex:1;" />
+            <span class="text-xs">%</span>
+            <div class="badge badge-neutral mono" id="calculated-lots" style="min-width:60px;text-align:center;">— lots</div>
           </div>
         </div>
       </div>
 
-      <!-- Trade Mode -->
-      <div class="input-group" style="margin-bottom:var(--space-3);">
-        <label class="input-label">Trade Mode</label>
-        <div class="tabs" id="trade-mode-tabs">
-          ${Object.entries(TRADE_MODES).map(([key, cfg]) => `
-            <button class="tab${key === mode ? ' active' : ''}" data-mode="${key}" style="font-size:var(--text-xs);">
-              ${cfg.icon} ${cfg.label}
-            </button>
-          `).join('')}
+      <!-- SL/TP -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);margin-bottom:var(--space-3);">
+        <div class="input-group">
+          <label class="input-label">Stop Loss (pips)</label>
+          <input type="number" class="input input-sm" id="trade-sl" value="${modeConfig.defaultSL}" />
+        </div>
+        <div class="input-group">
+          <label class="input-label">Take Profit (pips)</label>
+          <input type="number" class="input input-sm" id="trade-tp" value="${modeConfig.defaultTP}" />
         </div>
       </div>
 
-      <!-- Lot Size -->
-      <div class="input-group" style="margin-bottom:var(--space-3);">
-        <label class="input-label">Lot Size</label>
-        <div style="display:flex;gap:var(--space-2);align-items:center;">
-          <input type="number" class="input input-sm" id="trade-lot" value="${settings.defaultLotSize}" min="0.01" max="100" step="0.01" />
-          <div style="display:flex;gap:var(--space-1);">
-            <button class="btn btn-ghost btn-sm lot-preset" data-lot="0.01">0.01</button>
-            <button class="btn btn-ghost btn-sm lot-preset" data-lot="0.1">0.1</button>
-            <button class="btn btn-ghost btn-sm lot-preset" data-lot="1">1.0</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Stop Loss -->
-      <div class="input-group" style="margin-bottom:var(--space-3);">
-        <label class="input-label">Stop Loss (pips)</label>
-        <input type="number" class="input input-sm" id="trade-sl" value="${modeConfig.defaultSL}" min="0" step="1" />
-      </div>
-
-      <!-- Take Profit -->
-      <div class="input-group" style="margin-bottom:var(--space-3);">
-        <label class="input-label">Take Profit (pips)</label>
-        <input type="number" class="input input-sm" id="trade-tp" value="${modeConfig.defaultTP}" min="0" step="1" />
+      <!-- Metadata -->
+      <div class="input-group" style="margin-bottom:var(--space-4);">
+        <label class="input-label">Notes & Tags</label>
+        <textarea class="input input-sm" id="trade-notes" placeholder="Why are you taking this trade?" style="height:40px;resize:none;font-family:inherit;"></textarea>
+        <input type="text" class="input input-sm" id="trade-tags" placeholder="tags (comma separated)" style="margin-top:4px;" />
       </div>
 
       <!-- Risk Preview -->
-      <div id="trade-risk-preview" style="padding:var(--space-2) var(--space-3);background:var(--bg-tertiary);border-radius:var(--radius-md);margin-bottom:var(--space-4);font-size:var(--text-xs);">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-          <span class="text-muted">Risk</span>
-          <span class="mono" id="risk-amount">—</span>
+      <div id="risk-preview-box" style="padding:var(--space-2) var(--space-3);background:var(--bg-tertiary);border-radius:var(--radius-md);margin-bottom:var(--space-4);font-size:var(--text-xs);">
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+          <span class="text-muted">Risk Amount</span>
+          <span class="mono text-loss" id="risk-val">—</span>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-          <span class="text-muted">Reward</span>
-          <span class="mono" id="reward-amount">—</span>
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+          <span class="text-muted">Reward Amount</span>
+          <span class="mono text-profit" id="reward-val">—</span>
         </div>
         <div style="display:flex;justify-content:space-between;">
           <span class="text-muted">R:R Ratio</span>
-          <span class="mono" id="rr-ratio">—</span>
+          <span class="mono" id="ratio-val">—</span>
         </div>
       </div>
 
-      <!-- Execute Buttons -->
       <div style="display:flex;gap:var(--space-2);">
-        <button class="btn btn-sell btn-lg" style="flex:1;" id="trade-sell-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-          SELL
-        </button>
-        <button class="btn btn-buy btn-lg" style="flex:1;" id="trade-buy-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-          BUY
-        </button>
+        <button class="btn btn-sell btn-lg" style="flex:1;" id="btn-sell">SELL</button>
+        <button class="btn btn-buy btn-lg" style="flex:1;" id="btn-buy">BUY</button>
       </div>
     </div>
   `;
 
-  // === Event Handlers ===
+  // === Interactivity ===
 
-  container.querySelector('#trade-pair')?.addEventListener('change', (e) => {
-    store.set('selectedPair', e.target.value);
-    renderTradeForm(container);
-  });
+  const priceGroup = container.querySelector('#target-price-group');
+  const priceInput = container.querySelector('#trade-price');
+  const lotLabel = container.querySelector('#calculated-lots');
 
-  container.querySelectorAll('#trade-mode-tabs .tab').forEach(el => {
-    el.addEventListener('click', () => {
-      const newMode = el.dataset.mode;
-      store.set('settings.tradeMode', newMode);
-      container.querySelectorAll('#trade-mode-tabs .tab').forEach(t => t.classList.remove('active'));
-      el.classList.add('active');
-
-      const cfg = TRADE_MODES[newMode];
-      container.querySelector('#trade-sl').value = cfg.defaultSL;
-      container.querySelector('#trade-tp').value = cfg.defaultTP;
-      updateRiskPreview(container);
+  container.querySelectorAll('#order-type-tabs .tab').forEach(t => {
+    t.addEventListener('click', () => {
+      orderType = t.dataset.type;
+      container.querySelectorAll('#order-type-tabs .tab').forEach(btn => btn.classList.remove('active'));
+      t.classList.add('active');
+      priceGroup.style.display = orderType === 'market' ? 'none' : 'flex';
+      if (orderType !== 'market' && !priceInput.value && quote) {
+        priceInput.value = quote.close || quote.bid;
+      }
     });
   });
 
-  container.querySelectorAll('.lot-preset').forEach(el => {
-    el.addEventListener('click', () => {
-      container.querySelector('#trade-lot').value = el.dataset.lot;
-      updateRiskPreview(container);
+  const riskToggle = container.querySelector('#use-risk-percent');
+  const lotWrapper = container.querySelector('#lot-input-wrapper');
+  const riskWrapper = container.querySelector('#risk-input-wrapper');
+
+  riskToggle.addEventListener('change', () => {
+    useRiskPercent = riskToggle.checked;
+    lotWrapper.style.display = useRiskPercent ? 'none' : 'block';
+    riskWrapper.style.display = useRiskPercent ? 'block' : 'none';
+    updateCalculations();
+  });
+
+  function updateCalculations() {
+    const sl = parseFloat(container.querySelector('#trade-sl').value) || 0;
+    const tp = parseFloat(container.querySelector('#trade-tp').value) || 0;
+    const balance = store.get('balance');
+    let lots = parseFloat(container.querySelector('#trade-lot').value) || 0.01;
+
+    if (useRiskPercent) {
+      const riskP = parseFloat(container.querySelector('#trade-risk-percent').value) || 1;
+      const riskAmt = balance * (riskP / 100);
+      lots = calculateLotSize(riskAmt, sl, pair);
+      lotLabel.textContent = `${lots.toFixed(2)} lots`;
+    }
+
+    const pipVal = lots * 100000 * getPipSize(pair);
+    const riskAmt = sl * pipVal;
+    const rewardAmt = tp * pipVal;
+    const ratio = sl > 0 ? (tp / sl).toFixed(2) : '∞';
+
+    container.querySelector('#risk-val').textContent = `$${riskAmt.toFixed(2)}`;
+    container.querySelector('#reward-val').textContent = `$${rewardAmt.toFixed(2)}`;
+    container.querySelector('#ratio-val').textContent = `1:${ratio}`;
+    
+    return { lots, sl, tp, riskAmt };
+  }
+
+  ['trade-sl', 'trade-tp', 'trade-lot', 'trade-risk-percent'].forEach(id => {
+    container.querySelector(`#${id}`).addEventListener('input', updateCalculations);
+  });
+
+  container.querySelectorAll('.lot-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      container.querySelector('#trade-lot').value = btn.dataset.lot;
+      updateCalculations();
     });
   });
 
-  ['trade-lot', 'trade-sl', 'trade-tp'].forEach(id => {
-    container.querySelector(`#${id}`)?.addEventListener('input', () => updateRiskPreview(container));
-  });
+  const execute = (direction) => {
+    const { lots, sl, tp } = updateCalculations();
+    const targetPrice = orderType === 'market' ? null : priceInput.value;
+    const notes = container.querySelector('#trade-notes').value;
+    const tags = container.querySelector('#trade-tags').value.split(',').map(t => t.trim()).filter(Boolean);
 
-  container.querySelector('#trade-buy-btn')?.addEventListener('click', () => executeTrade(container, 'buy'));
-  container.querySelector('#trade-sell-btn')?.addEventListener('click', () => executeTrade(container, 'sell'));
+    try {
+      executeOrder({
+        pair, direction, lotSize: lots, stopLoss: sl, takeProfit: tp,
+        type: orderType, price: targetPrice, mode, notes, tags
+      });
+    } catch (e) {
+      alert(e.message);
+    }
+  };
 
-  // Stable subscription — only update text nodes, NOT full re-render
+  container.querySelector('#btn-buy').addEventListener('click', () => execute('buy'));
+  container.querySelector('#btn-sell').addEventListener('click', () => execute('sell'));
+
+  const instanceId = `tradeform-${Math.random().toString(36).substr(2, 5)}`;
+
+  // Live price subscription
   store.subscribe('quotes', () => {
-    const q = store.get('quotes')?.[store.get('selectedPair')];
+    const q = store.get('quotes')?.[pair];
     if (!q) return;
-    const bid = container.querySelector('#trade-bid');
-    const ask = container.querySelector('#trade-ask');
-    if (bid) bid.textContent = q.bid || q.close || '—';
-    if (ask) ask.textContent = q.ask || q.close || '—';
-  }, 'tradeform-quotes');
+    const bidEl = container.querySelector('#form-bid');
+    const askEl = container.querySelector('#form-ask');
+    if (bidEl) bidEl.textContent = q.bid || q.close;
+    if (askEl) askEl.textContent = q.ask || q.close;
+  }, `${instanceId}-quotes`);
 
-  updateRiskPreview(container);
-}
+  updateCalculations();
 
-function updateRiskPreview(container) {
-  const pair = store.get('selectedPair');
-  const lot = parseFloat(container.querySelector('#trade-lot')?.value || 0.01);
-  const sl = parseFloat(container.querySelector('#trade-sl')?.value || 0);
-  const tp = parseFloat(container.querySelector('#trade-tp')?.value || 0);
-
-  const pipSize = getPipSize(pair);
-  const pipValue = lot * 100000 * pipSize;
-
-  const riskAmount = sl * pipValue;
-  const rewardAmount = tp * pipValue;
-  const rrRatio = sl > 0 ? (tp / sl).toFixed(2) : '∞';
-
-  const riskEl = container.querySelector('#risk-amount');
-  const rewardEl = container.querySelector('#reward-amount');
-  const rrEl = container.querySelector('#rr-ratio');
-
-  if (riskEl) riskEl.textContent = `$${riskAmount.toFixed(2)}`;
-  if (rewardEl) rewardEl.textContent = `$${rewardAmount.toFixed(2)}`;
-  if (rrEl) {
-    rrEl.textContent = `1:${rrRatio}`;
-    rrEl.className = `mono ${parseFloat(rrRatio) >= 2 ? 'text-profit' : parseFloat(rrRatio) >= 1 ? 'text-warning' : 'text-loss'}`;
-  }
-}
-
-function executeTrade(container, direction) {
-  const pair = container.querySelector('#trade-pair')?.value || store.get('selectedPair');
-  const lotSize = parseFloat(container.querySelector('#trade-lot')?.value || 0.01);
-  const stopLoss = parseFloat(container.querySelector('#trade-sl')?.value || 0);
-  const takeProfit = parseFloat(container.querySelector('#trade-tp')?.value || 0);
-  const mode = store.get('settings.tradeMode');
-
-  try {
-    openTrade({
-      pair,
-      direction,
-      lotSize,
-      stopLoss: stopLoss || null,
-      takeProfit: takeProfit || null,
-      mode,
-    });
-  } catch (err) {
-    alert(err.message);
-  }
+  return () => {
+    store.unsubscribe(`${instanceId}-quotes`);
+  };
 }

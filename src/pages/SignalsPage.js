@@ -6,7 +6,7 @@ import { renderSignalCardsIndexed } from '../components/SignalCards.js';
 import { generateTradeSignals } from '../services/signalGenerator.js';
 import store from '../services/store.js';
 
-export async function renderSignalsPage(container) {
+export function renderSignalsPage(container) {
   const timeframe = store.get('ui.chartInterval') || '1h';
 
   container.innerHTML = `
@@ -47,7 +47,15 @@ export async function renderSignalsPage(container) {
   const tfSelect = container.querySelector('#signals-timeframe');
   const refreshBtn = container.querySelector('#refresh-signals');
 
+  let cardsCleanup = null;
+
   async function updateSignals() {
+    if (!signalsContainer) return; // Cleanup check
+    
+    // Cleanup previous cards
+    if (cardsCleanup) cardsCleanup();
+    cardsCleanup = null;
+
     signalsContainer.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:var(--space-4);">
         <div class="skeleton" style="height:300px;"></div>
@@ -64,16 +72,25 @@ export async function renderSignalsPage(container) {
       countBadge.className = signals.length > 0 ? 'badge badge-profit' : 'badge badge-neutral';
     }
     
-    renderSignalCardsIndexed(signalsContainer, signals);
+    cardsCleanup = renderSignalCardsIndexed(signalsContainer, signals);
   }
 
-  tfSelect.addEventListener('change', () => {
+  const onTFChange = () => {
     store.set('ui.chartInterval', tfSelect.value);
     updateSignals();
-  });
+  };
 
-  refreshBtn.addEventListener('click', updateSignals);
+  const onRefresh = () => updateSignals();
+
+  tfSelect.addEventListener('change', onTFChange);
+  refreshBtn.addEventListener('click', onRefresh);
 
   // Initial load
   updateSignals();
+
+  return () => {
+    if (cardsCleanup) cardsCleanup();
+    tfSelect.removeEventListener('change', onTFChange);
+    refreshBtn.removeEventListener('click', onRefresh);
+  };
 }

@@ -7,15 +7,6 @@ import store from '../services/store.js';
 import { fetchTimeSeries } from '../services/api.js';
 import { calculateEMA, calculateBollingerBands } from '../services/indicators.js';
 
-let chart = null;
-let candleSeries = null;
-let ema20Series = null;
-let ema50Series = null;
-let bbUpperSeries = null;
-let bbLowerSeries = null;
-let resizeObserver = null;
-let loadingData = false;
-
 const TIMEFRAMES = [
   { value: '1min', label: '1M' },
   { value: '5min', label: '5M' },
@@ -28,6 +19,20 @@ const TIMEFRAMES = [
 export function renderChart(container, options = {}) {
   const pair = options.pair || store.get('selectedPair');
   const interval = store.get('ui.chartInterval');
+  const instanceId = `chart-${pair.replace('/', '-')}-${Math.random().toString(36).substr(2, 9)}`;
+
+  // Instance state
+  const state = {
+    chart: null,
+    candleSeries: null,
+    ema20Series: null,
+    ema50Series: null,
+    bbUpperSeries: null,
+    bbLowerSeries: null,
+    resizeObserver: null,
+    loadingData: false,
+    pair: pair
+  };
 
   container.innerHTML = `
     <div class="card" style="height:100%;display:flex;flex-direction:column;">
@@ -51,46 +56,49 @@ export function renderChart(container, options = {}) {
   container.querySelectorAll('#chart-timeframes .tab').forEach(el => {
     el.addEventListener('click', () => {
       store.set('ui.chartInterval', el.dataset.tf);
-      loadChartData(pair, el.dataset.tf);
+      loadChartData(state, el.dataset.tf);
       container.querySelectorAll('#chart-timeframes .tab').forEach(t => t.classList.remove('active'));
       el.classList.add('active');
     });
   });
 
-  initChart(container.querySelector('#chart-container'));
-  loadChartData(pair, interval);
+  initChart(state, container.querySelector('#chart-container'));
+  loadChartData(state, interval);
 
-  // Stable subscriptions
+  // Stable subscriptions with unique IDs
   store.subscribe('selectedPair', (newPair) => {
-    const label = container.querySelector('.card-header span:first-child');
-    if (label) label.textContent = newPair;
-    loadChartData(newPair, store.get('ui.chartInterval'));
-  }, 'chart-pair');
+    // Only update if this instance is the main chart (no pair explicitly passed)
+    if (!options.pair) {
+      state.pair = newPair;
+      const label = container.querySelector('.card-header span:first-child');
+      if (label) label.textContent = newPair;
+      loadChartData(state, store.get('ui.chartInterval'));
+    }
+  }, `${instanceId}-pair`);
 
-  store.subscribe('quotes', () => {
-    const q = store.get('quotes')?.[store.get('selectedPair')];
+  store.subscribe('quotes', (quotes) => {
+    const q = quotes?.[state.pair];
     const badge = container.querySelector('#chart-price-badge');
     if (q && badge) {
       const change = parseFloat(q.percent_change || 0);
       badge.textContent = `${q.close || q.bid} (${change >= 0 ? '+' : ''}${change.toFixed(2)}%)`;
       badge.className = `badge ${change >= 0 ? 'badge-profit' : 'badge-loss'}`;
     }
-  }, 'chart-quotes');
+  }, `${instanceId}-quotes`);
+
+  // Return a cleanup function
+  return () => {
+    if (state.resizeObserver) state.resizeObserver.disconnect();
+    if (state.chart) state.chart.remove();
+    store.unsubscribe(`${instanceId}-pair`);
+    store.unsubscribe(`${instanceId}-quotes`);
+  };
 }
 
-function initChart(container) {
-  if (chart) {
-    chart.remove();
-    chart = null;
-  }
-
-  if (resizeObserver) {
-    resizeObserver.disconnect();
-  }
-
+function initChart(state, container) {
   const isDark = store.get('settings.theme') !== 'light';
 
-  chart = createChart(container, {
+  state.chart = createChart(container, {
     layout: {
       background: { type: ColorType.Solid, color: 'transparent' },
       textColor: isDark ? '#94a3b8' : '#475569',
@@ -118,7 +126,7 @@ function initChart(container) {
     handleScale: true,
   });
 
-  candleSeries = chart.addCandlestickSeries({
+  state.candleSeries = state.chart.addCandlestickSeries({
     upColor: '#10b981',
     downColor: '#ef4444',
     borderUpColor: '#10b981',
@@ -127,32 +135,35 @@ function initChart(container) {
     wickDownColor: '#ef4444',
   });
 
-  ema20Series = chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, lineStyle: 0, title: 'EMA 20' });
-  ema50Series = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, lineStyle: 0, title: 'EMA 50' });
-  bbUpperSeries = chart.addLineSeries({ color: 'rgba(139, 92, 246, 0.4)', lineWidth: 1, lineStyle: 2, title: 'BB Upper' });
-  bbLowerSeries = chart.addLineSeries({ color: 'rgba(139, 92, 246, 0.4)', lineWidth: 1, lineStyle: 2, title: 'BB Lower' });
+  state.ema20Series = state.chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, lineStyle: 0, title: 'EMA 20' });
+  state.ema50Series = state.chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, lineStyle: 0, title: 'EMA 50' });
+  state.bbUpperSeries = state.chart.addLineSeries({ color: 'rgba(139, 92, 246, 0.4)', lineWidth: 1, lineStyle: 2, title: 'BB Upper' });
+  state.bbLowerSeries = state.chart.addLineSeries({ color: 'rgba(139, 92, 246, 0.4)', lineWidth: 1, lineStyle: 2, title: 'BB Lower' });
 
   // Throttled resize
   let resizeTimeout;
-  resizeObserver = new ResizeObserver((entries) => {
+  state.resizeObserver = new ResizeObserver((entries) => {
     if (resizeTimeout) return;
     resizeTimeout = requestAnimationFrame(() => {
       resizeTimeout = null;
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) chart.applyOptions({ width, height });
+        if (width > 0 && height > 0 && state.chart) state.chart.applyOptions({ width, height });
       }
     });
   });
-  resizeObserver.observe(container);
+  state.resizeObserver.observe(container);
 }
 
-async function loadChartData(pair, interval) {
-  if (!chart || !candleSeries || loadingData) return;
-  loadingData = true;
+async function loadChartData(state, interval) {
+  if (!state.chart || !state.candleSeries || state.loadingData) return;
+  state.loadingData = true;
 
   try {
-    const data = await fetchTimeSeries(pair, interval, 150);
+    const data = await fetchTimeSeries(state.pair, interval, 150);
+    // Check if component was cleaned up during fetch
+    if (!state.chart || !state.candleSeries) return;
+
     if (!data || data.length === 0) return;
 
     const candles = data.map(d => ({
@@ -174,7 +185,7 @@ async function loadChartData(pair, interval) {
     }
     uniqueCandles.sort((a, b) => a.time - b.time);
 
-    candleSeries.setData(uniqueCandles);
+    if (state.candleSeries) state.candleSeries.setData(uniqueCandles);
 
     // Indicators
     const closes = uniqueCandles.map(c => c.close);
@@ -186,21 +197,15 @@ async function loadChartData(pair, interval) {
       values.map((v, i) => v !== null ? { time: uniqueCandles[i].time, value: v } : null)
         .filter(Boolean);
 
-    ema20Series.setData(toLineData(ema20));
-    ema50Series.setData(toLineData(ema50));
-    bbUpperSeries.setData(toLineData(bb.upper));
-    bbLowerSeries.setData(toLineData(bb.lower));
+    if (state.ema20Series) state.ema20Series.setData(toLineData(ema20));
+    if (state.ema50Series) state.ema50Series.setData(toLineData(ema50));
+    if (state.bbUpperSeries) state.bbUpperSeries.setData(toLineData(bb.upper));
+    if (state.bbLowerSeries) state.bbLowerSeries.setData(toLineData(bb.lower));
 
-    chart.timeScale().fitContent();
+    if (state.chart) state.chart.timeScale().fitContent();
   } catch (err) {
     console.error('Failed to load chart data:', err);
   } finally {
-    loadingData = false;
+    state.loadingData = false;
   }
-}
-
-export function destroyChart() {
-  if (resizeObserver) resizeObserver.disconnect();
-  if (chart) chart.remove();
-  chart = null;
 }

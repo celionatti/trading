@@ -56,9 +56,14 @@ export function renderDashboard(container) {
   `;
 
   // Render sub-components
-  renderChart(container.querySelector('#dashboard-chart'));
-  renderTradeForm(container.querySelector('#dashboard-trade-form'));
-  renderMarketAnalysis(container.querySelector('#dashboard-analysis'));
-  renderWatchlist(container.querySelector('#dashboard-watchlist'));
-  renderPositions(container.querySelector('#dashboard-positions'), { compact: true });
+  const cleanups = [];
+  cleanups.push(renderChart(container.querySelector('#dashboard-chart')));
+  cleanups.push(renderTradeForm(container.querySelector('#dashboard-trade-form')));
+  cleanups.push(renderMarketAnalysis(container.querySelector('#dashboard-analysis')));
+  cleanups.push(renderWatchlist(container.querySelector('#dashboard-watchlist')));
+  cleanups.push(renderPositions(container.querySelector('#dashboard-positions'), { compact: true }));
+
+  return () => {
+    cleanups.forEach(c => c && c());
+  };
 }

@@ -14,4 +14,8 @@ export function renderAnalyticsPage(container) {
   `;
 
   renderAnalytics(container.querySelector('#analytics-content'));
+
+  return () => {
+    // Analytics is currently static, but we return a cleanup for consistency
+  };
 }

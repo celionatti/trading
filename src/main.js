@@ -20,6 +20,9 @@ import { renderPositionsPage } from './pages/PositionsPage.js';
 import { renderAnalyticsPage } from './pages/AnalyticsPage.js';
 import { renderSettingsPage } from './pages/SettingsPage.js';
 import { renderSignalsPage } from './pages/SignalsPage.js';
+import { renderMultiChartPage } from './pages/MultiChartPage.js';
+import { renderCalendarPage } from './pages/CalendarPage.js';
+import { renderTradeJournal } from './pages/JournalPage.js';
 
 // Services
 import store from './services/store.js';
@@ -34,6 +37,9 @@ const PAGES = {
   analytics: renderAnalyticsPage,
   settings: renderSettingsPage,
   signals: renderSignalsPage,
+  'multi-chart': renderMultiChartPage,
+  calendar: renderCalendarPage,
+  journal: renderTradeJournal,
 };
 
 let currentCleanup = null;
@@ -44,14 +50,18 @@ function navigateTo(page) {
 
   // Cleanup previous page
   if (currentCleanup) {
-    currentCleanup();
+    try {
+      currentCleanup();
+    } catch (e) {
+      console.warn('Page cleanup failed:', e);
+    }
     currentCleanup = null;
   }
 
   // Clear and render new page
   mainContent.innerHTML = '';
   const pageRenderer = PAGES[page] || PAGES.dashboard;
-  pageRenderer(mainContent);
+  currentCleanup = pageRenderer(mainContent);
 
   // Animate in
   mainContent.style.animation = 'none';

@@ -12,6 +12,10 @@ export function renderPositionsPage(container) {
     </div>
   `;
 
-  renderPositions(container.querySelector('#open-positions'));
+  const cleanup = renderPositions(container.querySelector('#open-positions'));
   renderTradeHistory(container.querySelector('#trade-history'));
+
+  return () => {
+    if (cleanup) cleanup();
+  };
 }

@@ -39,13 +39,19 @@ export function renderMarketAnalysis(container) {
     </div>
   `;
 
+  const instanceId = `analysis-${Math.random().toString(36).substr(2, 5)}`;
+
   runAnalysis(container, pair);
 
   store.subscribe('selectedPair', (newPair) => {
     const badge = container.querySelector('.card-header .badge');
     if (badge) badge.textContent = newPair;
     runAnalysis(container, newPair);
-  }, 'analysis-pair');
+  }, `${instanceId}-pair`);
+
+  return () => {
+    store.unsubscribe(`${instanceId}-pair`);
+  };
 }
 
 async function runAnalysis(container, pair) {

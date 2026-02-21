@@ -21,8 +21,13 @@ export function renderTradePage(container) {
     </div>
   `;
 
-  renderChart(container.querySelector('#trade-chart'));
-  renderTradeForm(container.querySelector('#trade-form'));
-  renderMarketAnalysis(container.querySelector('#trade-analysis'));
-  renderPositions(container.querySelector('#trade-positions'), { compact: true });
+  const cleanups = [];
+  cleanups.push(renderChart(container.querySelector('#trade-chart')));
+  cleanups.push(renderTradeForm(container.querySelector('#trade-form')));
+  cleanups.push(renderMarketAnalysis(container.querySelector('#trade-analysis')));
+  cleanups.push(renderPositions(container.querySelector('#trade-positions'), { compact: true }));
+
+  return () => {
+    cleanups.forEach(c => c && c());
+  };
 }
