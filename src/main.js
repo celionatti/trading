@@ -15,6 +15,7 @@ import { renderHeader } from './components/Header.js';
 
 // Pages
 import { renderDashboard } from './pages/Dashboard.js';
+import { renderMarketsPage } from './pages/MarketsPage.js';
 import { renderTradePage } from './pages/TradePage.js';
 import { renderPositionsPage } from './pages/PositionsPage.js';
 import { renderAnalyticsPage } from './pages/AnalyticsPage.js';
@@ -27,11 +28,12 @@ import { renderStrategyPage } from './pages/StrategyPage.js';
 
 // Services
 import store from './services/store.js';
-import { startPriceUpdates, onPriceUpdate } from './services/api.js';
+import { startPriceUpdates, onPriceUpdate, getDefaultPairs } from './services/api.js';
 import { updatePositionPrices } from './services/tradeEngine.js';
 
 // === Page Router ===
 const PAGES = {
+  markets: renderMarketsPage,
   dashboard: renderDashboard,
   trade: renderTradePage,
   positions: renderPositionsPage,
@@ -93,9 +95,9 @@ function init() {
     navigateTo(page);
   });
 
-  // Start live price updates
-  const watchlist = store.get('watchlist') || [];
-  startPriceUpdates(watchlist, 4000);
+  // Start live price updates for ALL default assets (to power Markets HQ & Watchlist)
+  const allAssets = getDefaultPairs().map(a => a.symbol);
+  startPriceUpdates(allAssets, 4000);
 
   // Update positions when prices change
   onPriceUpdate((quotes) => {

@@ -5,6 +5,7 @@
 import store from '../services/store.js';
 
 const NAV_ITEMS = [
+  { id: 'markets', icon: '🏛️', label: 'Markets' },
   { id: 'dashboard', icon: '📊', label: 'Dashboard' },
   { id: 'trade', icon: '💹', label: 'Trade' },
   { id: 'multi-chart', icon: '🖥️', label: 'Multi-Chart' },
@@ -33,7 +34,7 @@ export function renderSidebar(container) {
 
     <nav class="sidebar-nav">
       <div class="sidebar-section-title">Trading</div>
-      ${NAV_ITEMS.slice(0, 3).map(item => `
+      ${NAV_ITEMS.slice(0, 4).map(item => `
         <div class="nav-item${currentPage === item.id ? ' active' : ''}" data-page="${item.id}">
           <span class="nav-item-icon">${item.icon}</span>
           <span class="nav-item-text">${item.label}</span>

@@ -503,3 +503,20 @@
   color: var(--text-tertiary);
   font-size: var(--text-md);
 }
+
+/* Watchlist Tabs */
+.watchlist-tabs {
+  scrollbar-width: none;
+}
+.watchlist-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.watchlist-tab:hover {
+  color: var(--text-primary) !important;
+  background: var(--bg-tertiary);
+}
+
+.watchlist-tab.active {
+  background: var(--accent-primary-glow);
+}

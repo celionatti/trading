@@ -3,7 +3,7 @@
    ============================================ */
 
 import store from '../services/store.js';
-import { executeOrder, calculateLotSize, ORDER_TYPES, TRADE_MODES } from '../services/tradeEngine.js';
+import { executeOrder, calculateLotSize, calculatePipValue, ORDER_TYPES, TRADE_MODES } from '../services/tradeEngine.js';
 import { getPipSize } from '../services/api.js';
 
 export function renderTradeForm(container) {
@@ -154,10 +154,10 @@ export function renderTradeForm(container) {
       const riskP = parseFloat(container.querySelector('#trade-risk-percent').value) || 1;
       const riskAmt = balance * (riskP / 100);
       lots = calculateLotSize(riskAmt, sl, pair);
-      lotLabel.textContent = `${lots.toFixed(2)} lots`;
+      lotLabel.textContent = `${lots.toFixed(2)} unit${lots !== 1 ? 's' : ''}`;
     }
 
-    const pipVal = lots * 100000 * getPipSize(pair);
+    const pipVal = calculatePipValue(pair, lots);
     const riskAmt = sl * pipVal;
     const rewardAmt = tp * pipVal;
     const ratio = sl > 0 ? (tp / sl).toFixed(2) : '∞';

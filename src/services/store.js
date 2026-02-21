@@ -13,9 +13,10 @@ const defaultState = {
 
   // Watchlist
   watchlist: [
-    'EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF',
-    'AUD/USD', 'USD/CAD', 'NZD/USD', 'EUR/GBP',
-    'EUR/JPY', 'GBP/JPY'
+    'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', // Forex
+    'BTC/USD', 'ETH/USD', // Crypto
+    'AAPL', 'TSLA', // Stocks
+    'XAU/USD', 'WTI/USD' // Commodities
   ],
 
   // Live quotes
@@ -27,7 +28,7 @@ const defaultState = {
   // Open positions and Pending orders
   positions: [],
   orders: [],
-  
+
   // Trade history and Calendar
   history: [],
   calendar: [],
@@ -38,12 +39,11 @@ const defaultState = {
     defaultLotSize: 0.01,
     defaultStopLoss: 50,
     defaultTakeProfit: 100,
-    riskPercent: 2,
+    riskPercent: 1, // Default risk 1%
     tradeMode: 'day',
     theme: 'dark',
     leverage: 100,
     currency: 'USD',
-    riskPercent: 1, // Default risk 1%
   },
 
   // UI state
@@ -52,6 +52,10 @@ const defaultState = {
     currentPage: 'dashboard',
     chartInterval: '1h',
     chartType: 'candlestick',
+    marketCategory: 'Forex',
+    dashboardSideCollapsed: false,
+    tradeSideCollapsed: false,
+    marketSessionsCollapsed: false
   }
 };
 

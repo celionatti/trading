@@ -3,6 +3,7 @@
    ============================================ */
 
 import { renderChart } from '../components/Chart.js';
+import { renderWatchlist } from '../components/Watchlist.js';
 import { renderTradeForm } from '../components/TradeForm.js';
 import { renderMarketAnalysis } from '../components/MarketAnalysis.js';
 import { renderPositions } from '../components/Positions.js';
@@ -24,6 +25,7 @@ export function renderTradePage(container) {
       </div>
       <div class="trade-panel">
         <div id="trade-form"></div>
+        <div id="trade-watchlist" style="margin-top:var(--space-4);"></div>
         <div id="trade-analysis"></div>
       </div>
     </div>
@@ -31,6 +33,7 @@ export function renderTradePage(container) {
 
   const cleanups = [];
   cleanups.push(renderChart(container.querySelector('#trade-chart')));
+  cleanups.push(renderWatchlist(container.querySelector('#trade-watchlist')));
   cleanups.push(renderTradeForm(container.querySelector('#trade-form')));
   cleanups.push(renderMarketAnalysis(container.querySelector('#trade-analysis')));
   cleanups.push(renderPositions(container.querySelector('#trade-positions'), { compact: true }));

@@ -83,10 +83,22 @@ function generateId(prefix = 'T') {
   return `${prefix}${++tradeIdCounter}`;
 }
 
+export function getContractSize(pair) {
+  if (pair.includes('BTC') || pair.includes('ETH') || pair.includes('SOL')) return 1; // 1 coin
+  if (pair === 'AAPL' || pair === 'TSLA' || pair === 'NVDA') return 1; // 1 share
+  if (pair.includes('XAU')) return 100; // 100 oz per lot
+  if (pair.includes('XAG')) return 5000; // 5000 oz per lot
+  if (pair.includes('WTI')) return 1000; // 1000 barrels per lot
+  return 100000; // Forex standard
+}
+
 export function calculatePipValue(pair, lotSize) {
   const pipSize = getPipSize(pair);
-  const baseUnits = lotSize * 100000;
-  if (pair.endsWith('USD')) return baseUnits * pipSize;
+  const contractSize = getContractSize(pair);
+  const baseUnits = lotSize * contractSize;
+  
+  // For USD-quoted assets (Forex XXX/USD, Gold, Stocks, Crypto)
+  if (pair.endsWith('USD') || !pair.includes('/')) return baseUnits * pipSize;
   
   const quote = store.get('quotes')?.[pair];
   const rate = quote ? parseFloat(quote.close || quote.bid) : 1;
@@ -172,7 +184,8 @@ function createTrade(params) {
   let slPrice = stopLoss ? (direction === 'buy' ? entryPrice - stopLoss * pipSize : entryPrice + stopLoss * pipSize).toFixed(decimals) : null;
   let tpPrice = takeProfit ? (direction === 'buy' ? entryPrice + takeProfit * pipSize : entryPrice - takeProfit * pipSize).toFixed(decimals) : null;
 
-  const marginRequired = (lotSize * 100000) / store.get('settings.leverage');
+  const contractSize = getContractSize(pair);
+  const marginRequired = (lotSize * contractSize) / store.get('settings.leverage');
   if (marginRequired > store.get('freeMargin')) throw new Error('Insufficient margin');
 
   const trade = {

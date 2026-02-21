@@ -161,41 +161,74 @@ function generateMockCalendar() {
 
 function getDefaultPairs() {
   return [
-    { symbol: 'EUR/USD', currency_group: 'Major', currency_base: 'Euro', currency_quote: 'US Dollar' },
-    { symbol: 'GBP/USD', currency_group: 'Major', currency_base: 'British Pound', currency_quote: 'US Dollar' },
-    { symbol: 'USD/JPY', currency_group: 'Major', currency_base: 'US Dollar', currency_quote: 'Japanese Yen' },
-    { symbol: 'USD/CHF', currency_group: 'Major', currency_base: 'US Dollar', currency_quote: 'Swiss Franc' },
-    { symbol: 'AUD/USD', currency_group: 'Major', currency_base: 'Australian Dollar', currency_quote: 'US Dollar' },
-    { symbol: 'USD/CAD', currency_group: 'Major', currency_base: 'US Dollar', currency_quote: 'Canadian Dollar' },
-    { symbol: 'NZD/USD', currency_group: 'Major', currency_base: 'New Zealand Dollar', currency_quote: 'US Dollar' },
-    { symbol: 'EUR/GBP', currency_group: 'Minor', currency_base: 'Euro', currency_quote: 'British Pound' },
-    { symbol: 'EUR/JPY', currency_group: 'Minor', currency_base: 'Euro', currency_quote: 'Japanese Yen' },
-    { symbol: 'GBP/JPY', currency_group: 'Minor', currency_base: 'British Pound', currency_quote: 'Japanese Yen' },
+    // Forex
+    { symbol: 'EUR/USD', category: 'Forex', group: 'Major' },
+    { symbol: 'GBP/USD', category: 'Forex', group: 'Major' },
+    { symbol: 'USD/JPY', category: 'Forex', group: 'Major' },
+    { symbol: 'AUD/USD', category: 'Forex', group: 'Major' },
+    { symbol: 'EUR/JPY', category: 'Forex', group: 'Minor' },
+    // Crypto
+    { symbol: 'BTC/USD', category: 'Crypto', group: 'Major' },
+    { symbol: 'ETH/USD', category: 'Crypto', group: 'Major' },
+    { symbol: 'SOL/USD', category: 'Crypto', group: 'Alts' },
+    // Stocks
+    { symbol: 'AAPL', category: 'Stocks', group: 'Tech' },
+    { symbol: 'TSLA', category: 'Stocks', group: 'Tech' },
+    { symbol: 'NVDA', category: 'Stocks', group: 'Tech' },
+    // Commodities
+    { symbol: 'XAU/USD', category: 'Commodities', group: 'Metals' }, // Gold
+    { symbol: 'XAG/USD', category: 'Commodities', group: 'Metals' }, // Silver
+    { symbol: 'WTI/USD', category: 'Commodities', group: 'Energy' }, // Oil
   ];
 }
 
 const basePrices = {
+  // Forex
   'EUR/USD': 1.0850,
   'GBP/USD': 1.2650,
   'USD/JPY': 149.50,
   'USD/CHF': 0.8780,
   'AUD/USD': 0.6540,
-  'USD/CAD': 1.3580,
-  'NZD/USD': 0.6120,
-  'EUR/GBP': 0.8570,
   'EUR/JPY': 162.20,
-  'GBP/JPY': 189.15,
+  // Crypto
+  'BTC/USD': 52000.00,
+  'ETH/USD': 2850.00,
+  'SOL/USD': 110.00,
+  // Stocks
+  'AAPL': 182.50,
+  'TSLA': 195.00,
+  'NVDA': 725.00,
+  // Commodities
+  'XAU/USD': 2025.50,
+  'XAG/USD': 22.85,
+  'WTI/USD': 78.40,
 };
 
 // Running prices — persisted between ticks for smooth movement
 const livePrices = {};
 
 function getBasePrice(symbol) {
-  return basePrices[symbol] || 1.0000;
+  return basePrices[symbol] || 100.00;
 }
 
 function getPipSize(symbol) {
-  return symbol.includes('JPY') ? 0.01 : 0.0001;
+  if (symbol.includes('BTC') || symbol.includes('ETH')) return 1.0;
+  if (symbol.includes('SOL')) return 0.1;
+  if (symbol.includes('JPY')) return 0.01;
+  if (symbol === 'AAPL' || symbol === 'TSLA' || symbol === 'NVDA') return 0.01;
+  if (symbol.includes('XAU')) return 0.1; // Gold
+  if (symbol.includes('XAG')) return 0.01; // Silver
+  if (symbol.includes('WTI')) return 0.01; // Oil
+  return 0.0001; // Forex Standard
+}
+
+function getDecimals(symbol) {
+  if (symbol.includes('BTC') || symbol.includes('ETH')) return 2;
+  if (symbol.includes('SOL')) return 3;
+  if (symbol.includes('JPY')) return 3;
+  if (symbol === 'AAPL' || symbol === 'TSLA' || symbol === 'NVDA') return 2;
+  if (symbol.includes('XAU') || symbol.includes('XAG') || symbol.includes('WTI')) return 2;
+  return 5;
 }
 
 function getLivePrice(symbol) {
@@ -211,7 +244,7 @@ function getLivePrice(symbol) {
  */
 function generateMockQuote(symbol) {
   const pip = getPipSize(symbol);
-  const decimals = symbol.includes('JPY') ? 3 : 5;
+  const decimals = getDecimals(symbol);
 
   // Random walk: tiny step from last price
   const last = getLivePrice(symbol);
@@ -247,7 +280,7 @@ function generateMockTimeSeries(symbol, interval, count) {
 
   const base = getBasePrice(symbol);
   const pip = getPipSize(symbol);
-  const decimals = symbol.includes('JPY') ? 3 : 5;
+  const decimals = getDecimals(symbol);
   const candles = [];
   let price = base;
 
@@ -337,4 +370,4 @@ async function updatePrices(symbols) {
   priceUpdateCallbacks.forEach(cb => cb(quotes));
 }
 
-export { getApiKey, setApiKey, getBasePrice, getPipSize, generateMockQuote };
+export { getApiKey, setApiKey, getBasePrice, getPipSize, generateMockQuote, getDefaultPairs, getDecimals };

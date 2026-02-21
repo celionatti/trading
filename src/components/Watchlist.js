@@ -8,15 +8,46 @@ export function renderWatchlist(container) {
   const watchlist = store.get('watchlist') || [];
   const quotes = store.get('quotes') || {};
   const selectedPair = store.get('selectedPair');
+  const activeCategory = store.get('ui.marketCategory') || 'Forex';
+
+  // Hardcoded categories for scaling
+  const CATEGORIES = ['Forex', 'Crypto', 'Stocks', 'Commodities'];
+
+  // Filter watchlist based on active category
+  // In a real app we'd fetch this from API/Metadata, here we infer or use defaults
+  const filteredWatchlist = watchlist.filter(symbol => {
+    if (activeCategory === 'Forex') return symbol.includes('/') && !symbol.includes('BTC') && !symbol.includes('ETH') && !symbol.includes('SOL') && !symbol.includes('XAU') && !symbol.includes('XAG') && !symbol.includes('WTI');
+    if (activeCategory === 'Crypto') return symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('SOL');
+    if (activeCategory === 'Stocks') return !symbol.includes('/') && symbol.length <= 5;
+    if (activeCategory === 'Commodities') return symbol.includes('XAU') || symbol.includes('XAG') || symbol.includes('WTI');
+    return true;
+  });
 
   container.innerHTML = `
-    <div class="card" style="overflow:hidden;">
-      <div class="card-header">
+    <div class="card" style="overflow:hidden; display:flex; flex-direction:column; height:100%;">
+      <div class="card-header" style="flex-shrink:0;">
         <span class="card-title">Watchlist</span>
-        <span class="badge badge-neutral">${watchlist.length} pairs</span>
+        <span class="badge badge-neutral">${filteredWatchlist.length} assets</span>
       </div>
-      <div style="max-height:400px;overflow-y:auto;">
-        ${watchlist.map(pair => {
+
+      <!-- Category Tabs -->
+      <div class="watchlist-tabs" style="display:flex; padding:0 var(--space-2); border-bottom:1px solid var(--border-primary); background:var(--bg-secondary); gap:4px;">
+        ${CATEGORIES.map(cat => `
+          <div class="watchlist-tab ${activeCategory === cat ? 'active' : ''}" data-category="${cat}" style="
+            padding: var(--space-2) var(--space-3);
+            font-size: 11px;
+            font-weight: var(--font-semibold);
+            cursor: pointer;
+            color: ${activeCategory === cat ? 'var(--accent-primary)' : 'var(--text-tertiary)'};
+            border-bottom: 2px solid ${activeCategory === cat ? 'var(--accent-primary)' : 'transparent'};
+            transition: all var(--transition-fast);
+            white-space: nowrap;
+          ">${cat}</div>
+        `).join('')}
+      </div>
+
+      <div class="watchlist-items-container" style="flex:1; overflow-y:auto; min-height:300px;">
+        ${filteredWatchlist.length > 0 ? filteredWatchlist.map(pair => {
           const quote = quotes[pair];
           const price = quote ? (quote.close || quote.bid || '—') : '—';
           const change = quote ? parseFloat(quote.percent_change || 0) : 0;
@@ -37,7 +68,7 @@ export function renderWatchlist(container) {
                 <div style="font-weight:var(--font-semibold);font-size:var(--text-sm);">${pair}</div>
                 <div style="font-size:var(--text-xs);color:var(--text-tertiary);">
                   ${change >= 0 ? '▲' : '▼'}
-                  <span class="mono ${change >= 0 ? 'text-profit' : 'text-loss'}">
+                  <span class="mono ${change >= 0 ? 'text-profit' : 'text-loss'}" style="font-size:10px;">
                     ${change >= 0 ? '+' : ''}${change.toFixed(2)}%
                   </span>
                 </div>
@@ -50,10 +81,23 @@ export function renderWatchlist(container) {
               </div>
             </div>
           `;
-        }).join('')}
+        }).join('') : `
+          <div style="padding:var(--space-8); text-align:center; color:var(--text-tertiary); font-size:var(--text-sm);">
+            No ${activeCategory} assets in watchlist
+          </div>
+        `}
       </div>
     </div>
   `;
+
+  // Tab switching
+  container.querySelectorAll('.watchlist-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const cat = tab.dataset.category;
+      store.set('ui.marketCategory', cat);
+      renderWatchlist(container); // Re-render self
+    });
+  });
 
   const updateSelection = (pair) => {
     container.querySelectorAll('.watchlist-item').forEach(el => {
