@@ -1,22 +1,20 @@
 /* ============================================
-   FOREX PULSE — API Service (Twelve Data)
+   FOREX PULSE — API Service (Twelve Data) – Optimized
    ============================================ */
 
 const BASE_URL = 'https://api.twelvedata.com';
 
 // Rate limiting
-let requestQueue = [];
-let isProcessing = false;
-const RATE_LIMIT = 8; // requests per minute
+const RATE_LIMIT = 8;
 const RATE_WINDOW = 60000;
 let requestTimestamps = [];
 
 // Cache
 const cache = new Map();
 const CACHE_TTL = {
-  quote: 10000,        // 10s
-  timeSeries: 60000,   // 1 min
-  forexPairs: 3600000, // 1 hour
+  quote: 10000,
+  timeSeries: 60000,
+  forexPairs: 3600000,
 };
 
 function getApiKey() {
@@ -77,9 +75,7 @@ export async function fetchForexPairs() {
   if (!apiKey) return getDefaultPairs();
 
   try {
-    const data = await throttledFetch(
-      `${BASE_URL}/forex_pairs?apikey=${apiKey}`
-    );
+    const data = await throttledFetch(`${BASE_URL}/forex_pairs?apikey=${apiKey}`);
     const pairs = data.data || [];
     setCache(cacheKey, pairs);
     return pairs;
@@ -98,9 +94,7 @@ export async function fetchQuote(symbol) {
   if (!apiKey) return generateMockQuote(symbol);
 
   try {
-    const data = await throttledFetch(
-      `${BASE_URL}/quote?symbol=${symbol}&apikey=${apiKey}`
-    );
+    const data = await throttledFetch(`${BASE_URL}/quote?symbol=${symbol}&apikey=${apiKey}`);
     setCache(cacheKey, data);
     return data;
   } catch (err) {
@@ -134,17 +128,10 @@ export async function fetchIndicator(symbol, indicator, interval = '1h', params 
   const apiKey = getApiKey();
   if (!apiKey) return null;
 
-  const queryParams = new URLSearchParams({
-    symbol,
-    interval,
-    apikey: apiKey,
-    ...params
-  });
+  const queryParams = new URLSearchParams({ symbol, interval, apikey: apiKey, ...params });
 
   try {
-    const data = await throttledFetch(
-      `${BASE_URL}/${indicator}?${queryParams.toString()}`
-    );
+    const data = await throttledFetch(`${BASE_URL}/${indicator}?${queryParams.toString()}`);
     return (data.values || []).reverse();
   } catch (err) {
     console.warn(`Failed to fetch ${indicator}:`, err);
@@ -182,6 +169,9 @@ const basePrices = {
   'GBP/JPY': 189.15,
 };
 
+// Running prices — persisted between ticks for smooth movement
+const livePrices = {};
+
 function getBasePrice(symbol) {
   return basePrices[symbol] || 1.0000;
 }
@@ -190,30 +180,53 @@ function getPipSize(symbol) {
   return symbol.includes('JPY') ? 0.01 : 0.0001;
 }
 
+function getLivePrice(symbol) {
+  if (!livePrices[symbol]) {
+    livePrices[symbol] = getBasePrice(symbol);
+  }
+  return livePrices[symbol];
+}
+
+/**
+ * Generates a mock quote using a random-walk from the last known price
+ * instead of re-randomizing from scratch. Much cheaper + realistic.
+ */
 function generateMockQuote(symbol) {
-  const base = getBasePrice(symbol);
   const pip = getPipSize(symbol);
-  const spread = pip * (2 + Math.random() * 3);
-  const change = (Math.random() - 0.5) * pip * 100;
-  const price = base + change;
+  const decimals = symbol.includes('JPY') ? 3 : 5;
+
+  // Random walk: tiny step from last price
+  const last = getLivePrice(symbol);
+  const step = (Math.random() - 0.498) * pip * 8; // slight upward bias
+  const price = last + step;
+  livePrices[symbol] = price;
+
+  const spread = pip * (1.5 + Math.random() * 1.5);
+  const change = price - getBasePrice(symbol);
 
   return {
     symbol,
-    open: (price - change * 0.3).toFixed(symbol.includes('JPY') ? 3 : 5),
-    high: (price + pip * (20 + Math.random() * 50)).toFixed(symbol.includes('JPY') ? 3 : 5),
-    low: (price - pip * (20 + Math.random() * 50)).toFixed(symbol.includes('JPY') ? 3 : 5),
-    close: price.toFixed(symbol.includes('JPY') ? 3 : 5),
-    previous_close: (price - change).toFixed(symbol.includes('JPY') ? 3 : 5),
-    change: change.toFixed(symbol.includes('JPY') ? 3 : 5),
-    percent_change: ((change / base) * 100).toFixed(3),
-    bid: price.toFixed(symbol.includes('JPY') ? 3 : 5),
-    ask: (price + spread).toFixed(symbol.includes('JPY') ? 3 : 5),
+    open: (price - step * 0.3).toFixed(decimals),
+    high: (price + pip * 5).toFixed(decimals),
+    low: (price - pip * 5).toFixed(decimals),
+    close: price.toFixed(decimals),
+    previous_close: (price - change).toFixed(decimals),
+    change: change.toFixed(decimals),
+    percent_change: ((change / getBasePrice(symbol)) * 100).toFixed(3),
+    bid: price.toFixed(decimals),
+    ask: (price + spread).toFixed(decimals),
     timestamp: new Date().toISOString(),
     _isMock: true
   };
 }
 
+// Pre-generated time-series cache to avoid regeneration
+const seriesCache = new Map();
+
 function generateMockTimeSeries(symbol, interval, count) {
+  const cacheKey = `${symbol}_${interval}_${count}`;
+  if (seriesCache.has(cacheKey)) return seriesCache.get(cacheKey);
+
   const base = getBasePrice(symbol);
   const pip = getPipSize(symbol);
   const decimals = symbol.includes('JPY') ? 3 : 5;
@@ -251,6 +264,7 @@ function generateMockTimeSeries(symbol, interval, count) {
     price = close;
   }
 
+  seriesCache.set(cacheKey, candles);
   return candles;
 }
 
@@ -289,7 +303,6 @@ async function updatePrices(symbols) {
   const quotes = {};
 
   if (apiKey) {
-    // Batch fetch with real API
     for (const symbol of symbols) {
       try {
         quotes[symbol] = await fetchQuote(symbol);
@@ -298,7 +311,6 @@ async function updatePrices(symbols) {
       }
     }
   } else {
-    // Generate mock prices with simulated movement
     for (const symbol of symbols) {
       quotes[symbol] = generateMockQuote(symbol);
     }

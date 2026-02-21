@@ -1,5 +1,5 @@
 /* ============================================
-   FOREX PULSE — Sidebar Component
+   FOREX PULSE — Sidebar Component (Optimized)
    ============================================ */
 
 import store from '../services/store.js';
@@ -66,13 +66,12 @@ export function renderSidebar(container) {
   // Navigation click handlers
   container.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', () => {
-      const page = el.dataset.page;
-      store.set('ui.currentPage', page);
+      store.set('ui.currentPage', el.dataset.page);
     });
   });
 
-  // Subscribe to updates
-  store.subscribe('ui.currentPage', () => renderSidebar(container));
+  // Stable subscriptions (id prevents stacking)
+  store.subscribe('ui.currentPage', () => renderSidebar(container), 'sidebar-page');
   store.subscribe('balance', () => {
     const balEl = container.querySelector('.sidebar-balance-value');
     if (balEl) {
@@ -80,7 +79,7 @@ export function renderSidebar(container) {
       balEl.textContent = `$${bal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       balEl.className = `sidebar-balance-value ${bal >= 10000 ? 'text-profit' : 'text-loss'}`;
     }
-  });
+  }, 'sidebar-balance');
   store.subscribe('positions', () => {
     const badge = container.querySelector('.nav-item[data-page="positions"] .badge');
     const pos = store.get('positions') || [];
@@ -88,5 +87,5 @@ export function renderSidebar(container) {
       badge.textContent = pos.length;
       badge.style.display = pos.length > 0 ? '' : 'none';
     }
-  });
+  }, 'sidebar-positions');
 }

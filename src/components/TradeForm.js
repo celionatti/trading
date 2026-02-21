@@ -1,5 +1,5 @@
 /* ============================================
-   FOREX PULSE — Trade Form Component
+   FOREX PULSE — Trade Form Component (Optimized)
    ============================================ */
 
 import store from '../services/store.js';
@@ -116,13 +116,11 @@ export function renderTradeForm(container) {
 
   // === Event Handlers ===
 
-  // Pair change
   container.querySelector('#trade-pair')?.addEventListener('change', (e) => {
     store.set('selectedPair', e.target.value);
     renderTradeForm(container);
   });
 
-  // Mode change
   container.querySelectorAll('#trade-mode-tabs .tab').forEach(el => {
     el.addEventListener('click', () => {
       const newMode = el.dataset.mode;
@@ -130,7 +128,6 @@ export function renderTradeForm(container) {
       container.querySelectorAll('#trade-mode-tabs .tab').forEach(t => t.classList.remove('active'));
       el.classList.add('active');
 
-      // Update SL/TP defaults
       const cfg = TRADE_MODES[newMode];
       container.querySelector('#trade-sl').value = cfg.defaultSL;
       container.querySelector('#trade-tp').value = cfg.defaultTP;
@@ -138,7 +135,6 @@ export function renderTradeForm(container) {
     });
   });
 
-  // Lot presets
   container.querySelectorAll('.lot-preset').forEach(el => {
     el.addEventListener('click', () => {
       container.querySelector('#trade-lot').value = el.dataset.lot;
@@ -146,18 +142,14 @@ export function renderTradeForm(container) {
     });
   });
 
-  // Update risk on input change
   ['trade-lot', 'trade-sl', 'trade-tp'].forEach(id => {
     container.querySelector(`#${id}`)?.addEventListener('input', () => updateRiskPreview(container));
   });
 
-  // Buy button
   container.querySelector('#trade-buy-btn')?.addEventListener('click', () => executeTrade(container, 'buy'));
-
-  // Sell button
   container.querySelector('#trade-sell-btn')?.addEventListener('click', () => executeTrade(container, 'sell'));
 
-  // Subscribe to quote updates
+  // Stable subscription — only update text nodes, NOT full re-render
   store.subscribe('quotes', () => {
     const q = store.get('quotes')?.[store.get('selectedPair')];
     if (!q) return;
@@ -165,7 +157,7 @@ export function renderTradeForm(container) {
     const ask = container.querySelector('#trade-ask');
     if (bid) bid.textContent = q.bid || q.close || '—';
     if (ask) ask.textContent = q.ask || q.close || '—';
-  });
+  }, 'tradeform-quotes');
 
   updateRiskPreview(container);
 }
@@ -179,7 +171,6 @@ function updateRiskPreview(container) {
   const pipSize = getPipSize(pair);
   const pipValue = lot * 100000 * pipSize;
 
-  // For USD pairs approximate
   const riskAmount = sl * pipValue;
   const rewardAmount = tp * pipValue;
   const rrRatio = sl > 0 ? (tp / sl).toFixed(2) : '∞';

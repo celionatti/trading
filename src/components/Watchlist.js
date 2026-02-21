@@ -63,8 +63,8 @@ export function renderWatchlist(container) {
     });
   });
 
-  // Subscribe to updates
-  store.subscribe('quotes', () => updateWatchlistPrices(container));
+  // Stable subscription
+  store.subscribe('quotes', () => updateWatchlistPrices(container), 'watchlist-quotes');
 }
 
 function updateWatchlistPrices(container) {

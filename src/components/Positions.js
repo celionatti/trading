@@ -1,5 +1,5 @@
 /* ============================================
-   FOREX PULSE — Positions Component
+   FOREX PULSE — Positions Component (Optimized)
    ============================================ */
 
 import store from '../services/store.js';
@@ -22,6 +22,8 @@ export function renderPositions(container, options = {}) {
         </div>
       </div>
     `;
+    // Stable subscription — re-render when positions appear
+    store.subscribe('positions', () => renderPositions(container, options), `positions-${compact ? 'compact' : 'full'}`);
     return;
   }
 
@@ -32,8 +34,8 @@ export function renderPositions(container, options = {}) {
       <div class="card-header">
         <span class="card-title">Open Positions</span>
         <div style="display:flex;align-items:center;gap:var(--space-3);">
-          <span class="badge badge-info">${positions.length}</span>
-          <span class="mono ${totalPL >= 0 ? 'text-profit' : 'text-loss'}" style="font-size:var(--text-sm);font-weight:var(--font-bold);">
+          <span class="badge badge-info" id="pos-count">${positions.length}</span>
+          <span class="mono ${totalPL >= 0 ? 'text-profit' : 'text-loss'}" id="pos-total-pl" style="font-size:var(--text-sm);font-weight:var(--font-bold);">
             ${totalPL >= 0 ? '+' : ''}$${totalPL.toFixed(2)}
           </span>
         </div>
@@ -54,52 +56,8 @@ export function renderPositions(container, options = {}) {
               <th>Action</th>
             </tr>
           </thead>
-          <tbody>
-            ${positions.map(pos => {
-              const plClass = pos.unrealizedPL >= 0 ? 'text-profit' : 'text-loss';
-              const modeConfig = TRADE_MODES[pos.mode] || TRADE_MODES.day;
-              const progressPercent = getProgressPercent(pos);
-
-              return `
-                <tr data-trade-id="${pos.id}">
-                  <td><strong>${pos.pair}</strong></td>
-                  <td>
-                    <span class="badge ${pos.direction === 'buy' ? 'badge-profit' : 'badge-loss'}">
-                      ${pos.direction.toUpperCase()}
-                    </span>
-                  </td>
-                  <td class="mono">${pos.lotSize}</td>
-                  <td class="mono">${pos.entryPrice}</td>
-                  <td class="mono">${pos.currentPrice}</td>
-                  <td class="mono ${plClass}" style="font-weight:var(--font-bold);">
-                    ${pos.unrealizedPL >= 0 ? '+' : ''}$${pos.unrealizedPL.toFixed(2)}
-                  </td>
-                  <td class="mono ${plClass}">${pos.pips >= 0 ? '+' : ''}${pos.pips.toFixed(1)}</td>
-                  ${!compact ? `
-                    <td>
-                      <div style="font-size:var(--text-xs);">
-                        <span class="text-loss">SL: ${pos.stopLoss || '—'}</span><br>
-                        <span class="text-profit">TP: ${pos.takeProfit || '—'}</span>
-                      </div>
-                      <div class="progress-bar" style="margin-top:4px;width:80px;">
-                        <div class="progress-fill ${pos.unrealizedPL >= 0 ? 'profit' : 'loss'}" style="width:${progressPercent}%;"></div>
-                      </div>
-                    </td>
-                    <td>
-                      <span class="badge badge-neutral" style="color:${modeConfig.color};">
-                        ${modeConfig.icon} ${modeConfig.label}
-                      </span>
-                    </td>
-                  ` : ''}
-                  <td>
-                    <div style="display:flex;gap:var(--space-1);">
-                      ${!compact ? `<button class="btn btn-ghost btn-sm modify-btn" data-id="${pos.id}" title="Modify SL/TP">✏️</button>` : ''}
-                      <button class="btn btn-sell btn-sm close-btn" data-id="${pos.id}" title="Close Position">✕</button>
-                    </div>
-                  </td>
-                </tr>
-              `;
-            }).join('')}
+          <tbody id="positions-tbody">
+            ${positions.map(pos => renderPositionRow(pos, compact)).join('')}
           </tbody>
         </table>
       </div>
@@ -112,7 +70,6 @@ export function renderPositions(container, options = {}) {
       const id = el.dataset.id;
       if (confirm('Close this position?')) {
         closeTrade(id, 'manual');
-        renderPositions(container, options);
       }
     });
   });
@@ -132,13 +89,94 @@ export function renderPositions(container, options = {}) {
           stopLoss: newSL !== null ? parseFloat(newSL) : undefined,
           takeProfit: newTP !== null ? parseFloat(newTP) : undefined,
         });
-        renderPositions(container, options);
       }
     });
   });
 
-  // Subscribe to updates
-  store.subscribe('positions', () => renderPositions(container, options));
+  // Stable subscription — update cells in-place instead of full re-render
+  store.subscribe('positions', () => {
+    const updatedPositions = store.get('positions') || [];
+
+    // If count changed, do a full re-render
+    if (updatedPositions.length !== positions.length) {
+      renderPositions(container, options);
+      return;
+    }
+
+    // Otherwise just update dynamic cells
+    const totalPLNew = updatedPositions.reduce((s, p) => s + p.unrealizedPL, 0);
+    const totalPlEl = container.querySelector('#pos-total-pl');
+    if (totalPlEl) {
+      totalPlEl.textContent = `${totalPLNew >= 0 ? '+' : ''}$${totalPLNew.toFixed(2)}`;
+      totalPlEl.className = `mono ${totalPLNew >= 0 ? 'text-profit' : 'text-loss'}`;
+      totalPlEl.style.cssText = 'font-size:var(--text-sm);font-weight:var(--font-bold);';
+    }
+
+    updatedPositions.forEach(pos => {
+      const row = container.querySelector(`tr[data-trade-id="${pos.id}"]`);
+      if (!row) return;
+      const cells = row.querySelectorAll('td');
+      const plClass = pos.unrealizedPL >= 0 ? 'text-profit' : 'text-loss';
+
+      // Current price (col 4), P&L (col 5), Pips (col 6)
+      if (cells[4]) cells[4].textContent = pos.currentPrice;
+      if (cells[5]) {
+        cells[5].textContent = `${pos.unrealizedPL >= 0 ? '+' : ''}$${pos.unrealizedPL.toFixed(2)}`;
+        cells[5].className = `mono ${plClass}`;
+        cells[5].style.fontWeight = 'var(--font-bold)';
+      }
+      if (cells[6]) {
+        cells[6].textContent = `${pos.pips >= 0 ? '+' : ''}${pos.pips.toFixed(1)}`;
+        cells[6].className = `mono ${plClass}`;
+      }
+    });
+  }, `positions-${compact ? 'compact' : 'full'}`);
+}
+
+function renderPositionRow(pos, compact) {
+  const plClass = pos.unrealizedPL >= 0 ? 'text-profit' : 'text-loss';
+  const modeConfig = TRADE_MODES[pos.mode] || TRADE_MODES.day;
+  const progressPercent = getProgressPercent(pos);
+
+  return `
+    <tr data-trade-id="${pos.id}">
+      <td><strong>${pos.pair}</strong></td>
+      <td>
+        <span class="badge ${pos.direction === 'buy' ? 'badge-profit' : 'badge-loss'}">
+          ${pos.direction.toUpperCase()}
+        </span>
+      </td>
+      <td class="mono">${pos.lotSize}</td>
+      <td class="mono">${pos.entryPrice}</td>
+      <td class="mono">${pos.currentPrice}</td>
+      <td class="mono ${plClass}" style="font-weight:var(--font-bold);">
+        ${pos.unrealizedPL >= 0 ? '+' : ''}$${pos.unrealizedPL.toFixed(2)}
+      </td>
+      <td class="mono ${plClass}">${pos.pips >= 0 ? '+' : ''}${pos.pips.toFixed(1)}</td>
+      ${!compact ? `
+        <td>
+          <div style="font-size:var(--text-xs);">
+            <span class="text-loss">SL: ${pos.stopLoss || '—'}</span><br>
+            <span class="text-profit">TP: ${pos.takeProfit || '—'}</span>
+          </div>
+          <div class="progress-bar" style="margin-top:4px;width:80px;">
+            <div class="progress-fill ${pos.unrealizedPL >= 0 ? 'profit' : 'loss'}" style="width:${progressPercent}%;"></div>
+          </div>
+        </td>
+        <td>
+          <span class="badge badge-neutral" style="color:${modeConfig.color};">
+            ${modeConfig.icon} ${modeConfig.label}
+          </span>
+        </td>
+      ` : ''}
+      <td>
+        <div style="display:flex;gap:var(--space-1);">
+          ${!compact ? `<button class="btn btn-ghost btn-sm modify-btn" data-id="${pos.id}" title="Modify SL/TP">✏️</button>` : ''}
+          <button class="btn btn-sell btn-sm close-btn" data-id="${pos.id}" title="Close Position">✕</button>
+        </div>
+      </td>
+    </tr>
+  `;
 }
 
 function getProgressPercent(pos) {

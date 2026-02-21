@@ -1,5 +1,5 @@
 /* ============================================
-   FOREX PULSE — Chart Component
+   FOREX PULSE — Chart Component (Optimized)
    ============================================ */
 
 import { createChart, ColorType, CrosshairMode } from 'lightweight-charts';
@@ -9,12 +9,12 @@ import { calculateEMA, calculateBollingerBands } from '../services/indicators.js
 
 let chart = null;
 let candleSeries = null;
-let volumeSeries = null;
 let ema20Series = null;
 let ema50Series = null;
 let bbUpperSeries = null;
 let bbLowerSeries = null;
 let resizeObserver = null;
+let loadingData = false;
 
 const TIMEFRAMES = [
   { value: '1min', label: '1M' },
@@ -48,7 +48,6 @@ export function renderChart(container, options = {}) {
     </div>
   `;
 
-  // Timeframe click handlers
   container.querySelectorAll('#chart-timeframes .tab').forEach(el => {
     el.addEventListener('click', () => {
       store.set('ui.chartInterval', el.dataset.tf);
@@ -61,14 +60,13 @@ export function renderChart(container, options = {}) {
   initChart(container.querySelector('#chart-container'));
   loadChartData(pair, interval);
 
-  // Update when pair changes
+  // Stable subscriptions
   store.subscribe('selectedPair', (newPair) => {
     const label = container.querySelector('.card-header span:first-child');
     if (label) label.textContent = newPair;
     loadChartData(newPair, store.get('ui.chartInterval'));
-  });
+  }, 'chart-pair');
 
-  // Update price badge on quotes
   store.subscribe('quotes', () => {
     const q = store.get('quotes')?.[store.get('selectedPair')];
     const badge = container.querySelector('#chart-price-badge');
@@ -77,7 +75,7 @@ export function renderChart(container, options = {}) {
       badge.textContent = `${q.close || q.bid} (${change >= 0 ? '+' : ''}${change.toFixed(2)}%)`;
       badge.className = `badge ${change >= 0 ? 'badge-profit' : 'badge-loss'}`;
     }
-  });
+  }, 'chart-quotes');
 }
 
 function initChart(container) {
@@ -129,48 +127,29 @@ function initChart(container) {
     wickDownColor: '#ef4444',
   });
 
-  // EMA overlays
-  ema20Series = chart.addLineSeries({
-    color: '#3b82f6',
-    lineWidth: 1,
-    lineStyle: 0,
-    title: 'EMA 20',
-  });
+  ema20Series = chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, lineStyle: 0, title: 'EMA 20' });
+  ema50Series = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, lineStyle: 0, title: 'EMA 50' });
+  bbUpperSeries = chart.addLineSeries({ color: 'rgba(139, 92, 246, 0.4)', lineWidth: 1, lineStyle: 2, title: 'BB Upper' });
+  bbLowerSeries = chart.addLineSeries({ color: 'rgba(139, 92, 246, 0.4)', lineWidth: 1, lineStyle: 2, title: 'BB Lower' });
 
-  ema50Series = chart.addLineSeries({
-    color: '#f59e0b',
-    lineWidth: 1,
-    lineStyle: 0,
-    title: 'EMA 50',
-  });
-
-  // Bollinger Bands
-  bbUpperSeries = chart.addLineSeries({
-    color: 'rgba(139, 92, 246, 0.4)',
-    lineWidth: 1,
-    lineStyle: 2,
-    title: 'BB Upper',
-  });
-
-  bbLowerSeries = chart.addLineSeries({
-    color: 'rgba(139, 92, 246, 0.4)',
-    lineWidth: 1,
-    lineStyle: 2,
-    title: 'BB Lower',
-  });
-
-  // Resize observer
+  // Throttled resize
+  let resizeTimeout;
   resizeObserver = new ResizeObserver((entries) => {
-    for (const entry of entries) {
-      const { width, height } = entry.contentRect;
-      chart.applyOptions({ width, height });
-    }
+    if (resizeTimeout) return;
+    resizeTimeout = requestAnimationFrame(() => {
+      resizeTimeout = null;
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) chart.applyOptions({ width, height });
+      }
+    });
   });
   resizeObserver.observe(container);
 }
 
 async function loadChartData(pair, interval) {
-  if (!chart || !candleSeries) return;
+  if (!chart || !candleSeries || loadingData) return;
+  loadingData = true;
 
   try {
     const data = await fetchTimeSeries(pair, interval, 150);
@@ -184,9 +163,9 @@ async function loadChartData(pair, interval) {
       close: parseFloat(d.close),
     }));
 
-    // Deduplicate and sort by time
-    const uniqueCandles = [];
+    // Deduplicate & sort
     const seen = new Set();
+    const uniqueCandles = [];
     for (const c of candles) {
       if (!seen.has(c.time)) {
         seen.add(c.time);
@@ -197,7 +176,7 @@ async function loadChartData(pair, interval) {
 
     candleSeries.setData(uniqueCandles);
 
-    // Calculate & plot indicators
+    // Indicators
     const closes = uniqueCandles.map(c => c.close);
     const ema20 = calculateEMA(closes, 20);
     const ema50 = calculateEMA(closes, 50);
@@ -215,6 +194,8 @@ async function loadChartData(pair, interval) {
     chart.timeScale().fitContent();
   } catch (err) {
     console.error('Failed to load chart data:', err);
+  } finally {
+    loadingData = false;
   }
 }
 

@@ -1,5 +1,5 @@
 /* ============================================
-   FOREX PULSE — State Store
+   FOREX PULSE — State Store (Optimized)
    ============================================ */
 
 const STORAGE_KEY = 'forexpulse_state';
@@ -34,10 +34,10 @@ const defaultState = {
   settings: {
     apiKey: '',
     defaultLotSize: 0.01,
-    defaultStopLoss: 50,    // pips
-    defaultTakeProfit: 100, // pips
-    riskPercent: 2,         // % of account
-    tradeMode: 'day',       // scalp, day, swing
+    defaultStopLoss: 50,
+    defaultTakeProfit: 100,
+    riskPercent: 2,
+    tradeMode: 'day',
     theme: 'dark',
     leverage: 100,
     currency: 'USD',
@@ -58,6 +58,7 @@ class Store {
     this.listeners = new Map();
     this.batchTimeout = null;
     this.pendingKeys = new Set();
+    this._saveTimer = null;
   }
 
   loadState() {
@@ -85,14 +86,19 @@ class Store {
     return target;
   }
 
+  // Debounced save — coalesce rapid writes into one save
   saveState() {
-    try {
-      const toSave = { ...this.state };
-      delete toSave.quotes; // Don't persist live quotes
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-    } catch (e) {
-      console.warn('Failed to save state:', e);
-    }
+    if (this._saveTimer) return;
+    this._saveTimer = setTimeout(() => {
+      this._saveTimer = null;
+      try {
+        const toSave = { ...this.state };
+        delete toSave.quotes;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+      } catch (e) {
+        console.warn('Failed to save state:', e);
+      }
+    }, 500);
   }
 
   get(key) {
@@ -108,31 +114,38 @@ class Store {
     }
     obj[keys[keys.length - 1]] = value;
 
-    // Batch notifications
+    // Batch notifications via rAF
     this.pendingKeys.add(key);
     if (!this.batchTimeout) {
       this.batchTimeout = requestAnimationFrame(() => {
-        this.pendingKeys.forEach(k => this.notify(k));
+        const keysToNotify = [...this.pendingKeys];
         this.pendingKeys.clear();
         this.batchTimeout = null;
+        keysToNotify.forEach(k => this.notify(k));
       });
     }
 
-    // Save (debounced for quote updates)
+    // Save (debounced, skip for quotes)
     if (!key.startsWith('quotes')) {
       this.saveState();
     }
   }
 
-  subscribe(key, callback) {
+  /**
+   * Subscribe with a stable ID to prevent duplicate listeners.
+   * If `id` is provided and a listener with that id already exists
+   * for the given key, the old one is replaced (not stacked).
+   */
+  subscribe(key, callback, id) {
     if (!this.listeners.has(key)) {
-      this.listeners.set(key, new Set());
+      this.listeners.set(key, new Map());
     }
-    this.listeners.get(key).add(callback);
+    const map = this.listeners.get(key);
+    const listenerId = id || callback;
+    map.set(listenerId, callback);
 
-    // Return unsubscribe function
     return () => {
-      this.listeners.get(key)?.delete(callback);
+      map.delete(listenerId);
     };
   }
 
@@ -152,7 +165,6 @@ class Store {
     this.listeners.get('*')?.forEach(cb => cb(this.state));
   }
 
-  // Account helpers
   updateEquity() {
     const positions = this.get('positions') || [];
     const unrealizedPL = positions.reduce((sum, pos) => sum + (pos.unrealizedPL || 0), 0);
@@ -164,12 +176,13 @@ class Store {
   reset() {
     this.state = structuredClone(defaultState);
     this.saveState();
-    this.listeners.forEach((callbacks, key) => {
-      callbacks.forEach(cb => cb(this.get(key)));
+    this.listeners.forEach((callbacks) => {
+      callbacks.forEach(cb => {
+        try { cb(); } catch (e) { /* skip */ }
+      });
     });
   }
 }
 
-// Singleton
 const store = new Store();
 export default store;

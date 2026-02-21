@@ -45,7 +45,7 @@ export function renderMarketAnalysis(container) {
     const badge = container.querySelector('.card-header .badge');
     if (badge) badge.textContent = newPair;
     runAnalysis(container, newPair);
-  });
+  }, 'analysis-pair');
 }
 
 async function runAnalysis(container, pair) {

@@ -1,5 +1,5 @@
 /* ============================================
-   FOREX PULSE — Header Component
+   FOREX PULSE — Header Component (Optimized)
    ============================================ */
 
 import store from '../services/store.js';
@@ -81,9 +81,9 @@ export function renderHeader(container) {
     });
   });
 
-  // Subscribe to quote updates
-  store.subscribe('quotes', () => updateTicker(container));
-  store.subscribe('equity', () => updateAccountStats(container));
+  // Stable subscriptions
+  store.subscribe('quotes', () => updateTicker(container), 'header-quotes');
+  store.subscribe('equity', () => updateAccountStats(container), 'header-equity');
 }
 
 function updateTicker(container) {
