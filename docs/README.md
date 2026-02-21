@@ -25,3 +25,4 @@ ForexPulse is not just a trading platform; it is a **Decision HQ**. Whether you 
 - [Trading Guide](./trading-guide.md): How to take trades, manage risk, and use pending orders.
 - [Feature Details](./features.md): Deep dive into Multi-Chart, Journal, and Market Sessions.
 - [Technical Architecture](./architecture.md): Information for developers on how the app is built.
+- [Deployment Guide](./deployment.md): How to host the terminal on Vercel or Netlify.
