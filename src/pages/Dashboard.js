@@ -15,27 +15,19 @@ export function renderDashboard(container) {
   const positions = store.get('positions') || [];
   const totalUnrealizedPL = positions.reduce((s, p) => s + p.unrealizedPL, 0);
 
-  const isCollapsed = store.get('ui.dashboardSideCollapsed') || false;
+  const getCollapsed = () => store.get('ui.dashboardSideCollapsed') || false;
 
   container.innerHTML = `
-    <div class="dashboard-grid ${isCollapsed ? 'side-collapsed' : ''}">
-      <!-- Toggle Button -->
-      <button id="dashboard-side-toggle" class="btn btn-icon btn-ghost" style="position:fixed; bottom:var(--space-6); right:var(--space-6); z-index:var(--z-modal); border-radius:50%; box-shadow:var(--shadow-lg); background:var(--bg-secondary);">
-        ${isCollapsed ? '◀' : '▶'}
-      </button>
-
+    <div class="dashboard-grid ${getCollapsed() ? 'side-collapsed' : ''}" id="dashboard-main-grid">
       <!-- Top Stats -->
       <div class="dashboard-stats">
         <div class="stat-widget" style="border-left:3px solid var(--accent-primary);">
           <span class="stat-label">Balance</span>
           <span class="stat-value">$${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-          <span class="stat-change ${balance >= 10000 ? 'text-profit' : 'text-loss'}">
-            ${balance >= 10000 ? '▲' : '▼'} ${((balance - 10000) / 100).toFixed(2)}%
-          </span>
         </div>
         <div class="stat-widget" style="border-left:3px solid var(--color-profit);">
           <span class="stat-label">Equity</span>
-          <span class="stat-value ${equity >= balance ? 'text-profit' : 'text-loss'}">$${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+          <span class="stat-value">$${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
         </div>
         <div class="stat-widget" style="border-left:3px solid ${totalUnrealizedPL >= 0 ? 'var(--color-profit)' : 'var(--color-loss)'};">
           <span class="stat-label">Unrealized P&L</span>
@@ -47,7 +39,7 @@ export function renderDashboard(container) {
         </div>
       </div>
 
-      <!-- Chart -->
+      <!-- Chart Area -->
       <div class="dashboard-chart" id="dashboard-chart"></div>
 
       <!-- Right Sidebar -->
@@ -60,9 +52,25 @@ export function renderDashboard(container) {
       <!-- Bottom Positions -->
       <div class="dashboard-bottom" id="dashboard-positions"></div>
     </div>
+
+    <!-- Enhanced Floating Toggle Button -->
+    <button id="dashboard-side-toggle" class="btn btn-icon btn-primary" style="
+      position: fixed; 
+      bottom: 30px; 
+      right: 30px; 
+      z-index: 10001; 
+      width: 44px; 
+      height: 44px; 
+      border-radius: 50%; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      border: 2px solid white;
+      background: ${getCollapsed() ? 'var(--accent-secondary)' : 'var(--accent-primary)'};
+    ">
+      ${getCollapsed() ? '◀' : '▶'}
+    </button>
   `;
 
-  // Render sub-components
+  // Components
   const cleanups = [];
   cleanups.push(renderChart(container.querySelector('#dashboard-chart')));
   cleanups.push(renderTradeForm(container.querySelector('#dashboard-trade-form')));
@@ -70,25 +78,35 @@ export function renderDashboard(container) {
   cleanups.push(renderWatchlist(container.querySelector('#dashboard-watchlist')));
   cleanups.push(renderPositions(container.querySelector('#dashboard-positions'), { compact: true }));
 
-  // Side Toggle Handler
-  const toggleBtn = container.querySelector('#dashboard-side-toggle');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => {
-      const current = store.get('ui.dashboardSideCollapsed') || false;
-      store.set('ui.dashboardSideCollapsed', !current);
-      // Re-render to apply class (or just query and toggle class if we want to avoid full re-render)
-      const grid = container.querySelector('.dashboard-grid');
-      if (grid) {
-        const nowCollapsed = !current;
-        grid.classList.toggle('side-collapsed', nowCollapsed);
-        toggleBtn.innerHTML = nowCollapsed ? '◀' : '▶';
-        // Trigger chart resize
-        window.dispatchEvent(new Event('resize'));
-      }
-    });
-  }
+  // Re-sync UI state function
+  const syncLayout = () => {
+    const collapsed = getCollapsed();
+    const grid = container.querySelector('#dashboard-main-grid');
+    const btn = container.querySelector('#dashboard-side-toggle');
+    if (grid) grid.classList.toggle('side-collapsed', collapsed);
+    if (btn) {
+      btn.innerHTML = collapsed ? '◀' : '▶';
+      btn.style.background = collapsed ? 'var(--accent-secondary)' : 'var(--accent-primary)';
+    }
+    window.dispatchEvent(new Event('resize'));
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+  };
+
+  // Click handler: ONLY updates state
+  container.querySelector('#dashboard-side-toggle')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const nextState = !getCollapsed();
+    store.set('ui.dashboardSideCollapsed', nextState);
+    syncLayout(); // Instant feedback
+  });
+
+  // Subscribe for multi-tab/re-render sync
+  store.subscribe('ui.dashboardSideCollapsed', syncLayout, 'dash-toggle-sync');
 
   return () => {
     cleanups.forEach(c => c && c());
+    store.unsubscribe('dash-toggle-sync');
   };
 }

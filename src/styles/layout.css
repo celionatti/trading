@@ -525,3 +525,16 @@
     gap: var(--space-2);
   }
 }
+
+/* Floating Toggles Guarantee */
+#dashboard-side-toggle,
+#trade-side-toggle {
+  position: fixed !important;
+  bottom: 24px !important;
+  right: 24px !important;
+  z-index: 10000 !important;
+  display: flex !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}

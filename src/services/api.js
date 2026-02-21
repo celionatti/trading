@@ -5,7 +5,7 @@
 const BASE_URL = 'https://api.twelvedata.com';
 
 // Rate limiting
-const RATE_LIMIT = 8;
+const RATE_LIMIT = 12;
 const RATE_WINDOW = 60000;
 let requestTimestamps = [];
 
@@ -353,13 +353,24 @@ async function updatePrices(symbols) {
   const apiKey = getApiKey();
   const quotes = {};
 
-  if (apiKey) {
-    for (const symbol of symbols) {
-      try {
-        quotes[symbol] = await fetchQuote(symbol);
-      } catch (e) {
-        quotes[symbol] = generateMockQuote(symbol);
+  if (apiKey && symbols.length > 0) {
+    try {
+      // Twelve Data supports batching via comma-separated symbols
+      const symbolList = symbols.join(',');
+      const data = await throttledFetch(`${BASE_URL}/quote?symbol=${symbolList}&apikey=${apiKey}`);
+      
+      // Batch responses can be a single object (1 symbol) or object of objects (multiple)
+      if (symbols.length === 1) {
+        const symbol = symbols[0];
+        quotes[symbol] = data.status === 'error' ? generateMockQuote(symbol) : data;
+      } else {
+        symbols.forEach(s => {
+          quotes[s] = data[s] && data[s].status !== 'error' ? data[s] : generateMockQuote(s);
+        });
       }
+    } catch (e) {
+      console.warn('Batch price update failed, falling back to mock:', e);
+      symbols.forEach(s => quotes[s] = generateMockQuote(s));
     }
   } else {
     for (const symbol of symbols) {
