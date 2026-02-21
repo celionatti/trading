@@ -71,6 +71,12 @@ export function renderSidebar(container) {
   container.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', () => {
       store.set('ui.currentPage', el.dataset.page);
+      
+      // Close sidebar on mobile after navigation
+      if (window.innerWidth <= 768) {
+        container.classList.remove('open');
+        document.getElementById('overlay')?.classList.remove('open');
+      }
     });
   });
 

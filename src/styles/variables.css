@@ -127,6 +127,10 @@
   --z-modal: 500;
   --z-toast: 600;
   --z-tooltip: 700;
+
+  /* === Responsive Overrides (Baseline) === */
+  --container-padding: var(--space-4);
+  --content-gap: var(--space-4);
 }
 
 /* Light mode overrides */

@@ -61,9 +61,24 @@ export function renderHeader(container) {
 
   // Sidebar toggle
   container.querySelector('#sidebar-toggle')?.addEventListener('click', () => {
-    const collapsed = !store.get('ui.sidebarCollapsed');
-    store.set('ui.sidebarCollapsed', collapsed);
-    document.getElementById('sidebar').classList.toggle('collapsed', collapsed);
+    const isMobile = window.innerWidth <= 768;
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('overlay');
+    
+    if (isMobile) {
+      const isOpen = sidebar.classList.toggle('open');
+      overlay.classList.toggle('open', isOpen);
+    } else {
+      const collapsed = !store.get('ui.sidebarCollapsed');
+      store.set('ui.sidebarCollapsed', collapsed);
+      sidebar.classList.toggle('collapsed', collapsed);
+    }
+  });
+
+  // Overlay click → close sidebar
+  document.getElementById('overlay')?.addEventListener('click', () => {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('overlay').classList.remove('open');
   });
 
   // Theme toggle
