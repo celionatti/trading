@@ -7,6 +7,7 @@ import './styles/variables.css';
 import './styles/base.css';
 import './styles/components.css';
 import './styles/layout.css';
+import './styles/signal-cards.css';
 
 // Components
 import { renderSidebar } from './components/Sidebar.js';
@@ -18,6 +19,7 @@ import { renderTradePage } from './pages/TradePage.js';
 import { renderPositionsPage } from './pages/PositionsPage.js';
 import { renderAnalyticsPage } from './pages/AnalyticsPage.js';
 import { renderSettingsPage } from './pages/SettingsPage.js';
+import { renderSignalsPage } from './pages/SignalsPage.js';
 
 // Services
 import store from './services/store.js';
@@ -31,6 +33,7 @@ const PAGES = {
   positions: renderPositionsPage,
   analytics: renderAnalyticsPage,
   settings: renderSettingsPage,
+  signals: renderSignalsPage,
 };
 
 let currentCleanup = null;
