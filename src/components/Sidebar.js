@@ -34,7 +34,7 @@ export function renderSidebar(container) {
 
     <nav class="sidebar-nav">
       <div class="sidebar-section-title">Trading</div>
-      ${NAV_ITEMS.slice(0, 4).map(item => `
+      ${NAV_ITEMS.slice(0, 5).map(item => `
         <div class="nav-item${currentPage === item.id ? ' active' : ''}" data-page="${item.id}">
           <span class="nav-item-icon">${item.icon}</span>
           <span class="nav-item-text">${item.label}</span>
@@ -43,7 +43,7 @@ export function renderSidebar(container) {
       `).join('')}
 
       <div class="sidebar-section-title">Insights</div>
-      ${NAV_ITEMS.slice(3, 4).map(item => `
+      ${[NAV_ITEMS[5], NAV_ITEMS[12]?NAV_ITEMS[12]:null, NAV_ITEMS[8], NAV_ITEMS[9]].filter(Boolean).map(item => `
         <div class="nav-item${currentPage === item.id ? ' active' : ''}" data-page="${item.id}">
           <span class="nav-item-icon">${item.icon}</span>
           <span class="nav-item-text">${item.label}</span>
@@ -51,7 +51,7 @@ export function renderSidebar(container) {
       `).join('')}
 
       <div class="sidebar-section-title">System</div>
-      ${NAV_ITEMS.slice(4).map(item => `
+      ${[NAV_ITEMS[10], NAV_ITEMS[4], NAV_ITEMS[6], NAV_ITEMS[7]].map(item => `
         <div class="nav-item${currentPage === item.id ? ' active' : ''}" data-page="${item.id}">
           <span class="nav-item-icon">${item.icon}</span>
           <span class="nav-item-text">${item.label}</span>

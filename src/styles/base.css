@@ -237,6 +237,12 @@ input, select, textarea {
   100% { background-color: transparent; }
 }
 
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(0.98); }
+}
+
+.animate-pulse-soft { animation: pulse-soft 2.5s ease-in-out infinite; }
 .animate-fadeIn { animation: fadeIn var(--transition-base) ease-out; }
 .animate-fadeInUp { animation: fadeInUp var(--transition-base) ease-out; }
 .animate-pulse { animation: pulse 2s ease-in-out infinite; }

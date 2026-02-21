@@ -16,12 +16,16 @@ export function renderTradeForm(container) {
   
   let orderType = ORDER_TYPES.MARKET;
   let useRiskPercent = false;
+  const timeframe = store.get('ui.chartInterval') || '1h';
 
   container.innerHTML = `
     <div class="card">
-      <div class="card-header">
+      <div class="card-header" style="justify-content:space-between;">
         <span class="card-title">Order Entry</span>
-        <div class="tabs tabs-sm" id="order-type-tabs">
+        <div class="badge badge-info mono" id="form-timeframe" style="text-transform:uppercase;font-size:var(--text-xxs);">${timeframe}</div>
+      </div>
+      <div class="card-header" style="padding-top:0;margin-top:-var(--space-2);">
+        <div class="tabs tabs-sm" id="order-type-tabs" style="width:100%;">
           <button class="tab active" data-type="market">Market</button>
           <button class="tab" data-type="limit">Limit</button>
           <button class="tab" data-type="stop">Stop</button>
@@ -162,6 +166,26 @@ export function renderTradeForm(container) {
     const rewardAmt = tp * pipVal;
     const ratio = sl > 0 ? (tp / sl).toFixed(2) : '∞';
 
+    // Calculate actual prices for SL/TP feedback to user
+    const pipSize = getPipSize(pair);
+    const currentBid = quote ? (parseFloat(quote.bid) || parseFloat(quote.close)) : 0;
+    const currentAsk = quote ? (parseFloat(quote.ask) || parseFloat(quote.close)) : 0;
+    const decimals = pair.includes('JPY') ? 3 : 5;
+
+    if (currentBid && currentAsk) {
+      const buySL = (currentAsk - (sl * pipSize)).toFixed(decimals);
+      const buyTP = (currentAsk + (tp * pipSize)).toFixed(decimals);
+      const sellSL = (currentBid + (sl * pipSize)).toFixed(decimals);
+      const sellTP = (currentBid - (tp * pipSize)).toFixed(decimals);
+
+      container.querySelector('#trade-sl').parentElement.querySelector('.input-label').innerHTML = `
+        Stop Loss <span class="text-xxs text-muted">(Buy: ${buySL} | Sell: ${sellSL})</span>
+      `;
+      container.querySelector('#trade-tp').parentElement.querySelector('.input-label').innerHTML = `
+        Take Profit <span class="text-xxs text-muted">(Buy: ${buyTP} | Sell: ${sellTP})</span>
+      `;
+    }
+
     container.querySelector('#risk-val').textContent = `$${riskAmt.toFixed(2)}`;
     container.querySelector('#reward-val').textContent = `$${rewardAmt.toFixed(2)}`;
     container.querySelector('#ratio-val').textContent = `1:${ratio}`;
@@ -211,9 +235,16 @@ export function renderTradeForm(container) {
     if (askEl) askEl.textContent = q.ask || q.close;
   }, `${instanceId}-quotes`);
 
+  // Timeframe subscription
+  store.subscribe('ui.chartInterval', (tf) => {
+    const tfEl = container.querySelector('#form-timeframe');
+    if (tfEl) tfEl.textContent = tf;
+  }, `${instanceId}-timeframe`);
+
   updateCalculations();
 
   return () => {
     store.unsubscribe(`${instanceId}-quotes`);
+    store.unsubscribe(`${instanceId}-timeframe`);
   };
 }

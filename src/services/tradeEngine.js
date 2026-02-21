@@ -225,30 +225,47 @@ export function closeTrade(tradeId, reason = 'manual') {
 export function cancelOrder(orderId) {
   const orders = store.get('orders') || [];
   store.set('orders', orders.filter(o => o.id !== orderId));
-  showToast('Order cancelled', 'info');
+}
+
+export function modifyOrder(orderId, updates) {
+  const orders = store.get('orders') || [];
+  const idx = orders.findIndex(o => o.id === orderId);
+  if (idx === -1) return;
+
+  orders[idx] = { ...orders[idx], ...updates };
+  store.set('orders', [...orders]);
 }
 
 export function updatePositionPrices(quotes) {
   // Update open positions
   const positions = store.get('positions') || [];
-  if (positions.length > 0) {
+    const toClose = [];
     const newPositions = positions.map(trade => {
       const q = quotes[trade.pair];
       if (!q) return trade;
       const price = trade.direction === 'buy' ? parseFloat(q.bid || q.close) : parseFloat(q.ask || q.close);
       const pips = calculatePips(trade.pair, parseFloat(trade.entryPrice), price, trade.direction);
       const ut = { ...trade, currentPrice: price.toFixed(trade.pair.includes('JPY') ? 3 : 5), pips: Math.round(pips * 10) / 10, unrealizedPL: Math.round(pips * trade.pipValue * 100) / 100 };
-      if (trade.stopLoss && (trade.direction === 'buy' ? price <= parseFloat(trade.stopLoss) : price >= parseFloat(trade.stopLoss))) setTimeout(() => closeTrade(trade.id, 'stop-loss'), 0);
-      else if (trade.takeProfit && (trade.direction === 'buy' ? price >= parseFloat(trade.takeProfit) : price <= parseFloat(trade.takeProfit))) setTimeout(() => closeTrade(trade.id, 'take-profit'), 0);
+      
+      // Check SL/TP
+      if (trade.stopLoss && (trade.direction === 'buy' ? price <= parseFloat(trade.stopLoss) : price >= parseFloat(trade.stopLoss))) {
+        toClose.push({ id: trade.id, reason: 'stop-loss' });
+      } else if (trade.takeProfit && (trade.direction === 'buy' ? price >= parseFloat(trade.takeProfit) : price <= parseFloat(trade.takeProfit))) {
+        toClose.push({ id: trade.id, reason: 'take-profit' });
+      }
       return ut;
     });
+    
     store.set('positions', newPositions);
-  }
-
+    
+    // Process closures sequentially
+    toClose.forEach(c => closeTrade(c.id, c.reason));
+  
   // Check pending orders
   const orders = store.get('orders') || [];
   if (orders.length > 0) {
     orders.forEach(order => {
+      if (order.status !== 'pending') return;
       const q = quotes[order.pair];
       if (!q) return;
       const price = parseFloat(q.close || q.bid);
@@ -256,9 +273,16 @@ export function updatePositionPrices(quotes) {
       let trigger = false;
       if (order.type === ORDER_TYPES.LIMIT) trigger = order.direction === 'buy' ? price <= target : price >= target;
       else if (order.type === ORDER_TYPES.STOP) trigger = order.direction === 'buy' ? price >= target : price <= target;
+      
       if (trigger) {
-        cancelOrder(order.id);
-        try { createTrade({ ...order, entryPrice: price, decimals: order.pair.includes('JPY') ? 3 : 5, pipSize: getPipSize(order.pair) }); } catch (e) { showToast(`Failed to trigger order: ${e.message}`, 'error'); }
+        try {
+          createTrade({ ...order, entryPrice: price, decimals: order.pair.includes('JPY') ? 3 : 5, pipSize: getPipSize(order.pair) });
+          cancelOrder(order.id);
+          showToast(`Order Triggered: ${order.pair} @ ${price}`, 'success');
+        } catch (e) {
+          modifyOrder(order.id, { status: 'failed', error: e.message });
+          showToast(`Order Trigger Failed: ${e.message}`, 'error');
+        }
       }
     });
   }

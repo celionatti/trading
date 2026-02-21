@@ -1,13 +1,14 @@
-/* ============================================
-   FOREX PULSE — API Service (Twelve Data) – Optimized
-   ============================================ */
+import store from './store.js';
 
 const BASE_URL = 'https://api.twelvedata.com';
 
 // Rate limiting
-const RATE_LIMIT = 12;
+const RATE_LIMIT = 8; // Safer limit for free tier
 const RATE_WINDOW = 60000;
 let requestTimestamps = [];
+
+// In-flight requests (Shared request caching)
+const inflightRequests = new Map();
 
 // Cache
 const cache = new Map();
@@ -18,11 +19,11 @@ const CACHE_TTL = {
 };
 
 function getApiKey() {
-  return localStorage.getItem('forexpulse_api_key') || '';
+  return store.get('settings.apiKey') || '';
 }
 
 function setApiKey(key) {
-  localStorage.setItem('forexpulse_api_key', key);
+  store.set('settings.apiKey', key);
 }
 
 function getCacheKey(endpoint, params) {
@@ -42,26 +43,52 @@ function setCache(key, data) {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
+// Watch for API key changes to clear cache immediately
+store.subscribe('settings.apiKey', (newKey) => {
+  if (newKey) {
+    console.log('🛡️ API Key updated: Flushing all caches for live data...');
+    cache.clear();
+    seriesCache.clear();
+    // Also clear inflight requests to force new fetches
+    inflightRequests.clear();
+  }
+}, 'api-cache-manager');
+
 async function throttledFetch(url) {
-  const now = Date.now();
-  requestTimestamps = requestTimestamps.filter(t => now - t < RATE_WINDOW);
-
-  if (requestTimestamps.length >= RATE_LIMIT) {
-    const waitTime = RATE_WINDOW - (now - requestTimestamps[0]) + 100;
-    await new Promise(resolve => setTimeout(resolve, waitTime));
+  // Shared request deduplication
+  if (inflightRequests.has(url)) {
+    return inflightRequests.get(url);
   }
 
-  requestTimestamps.push(Date.now());
+  const fetchPromise = (async () => {
+    try {
+      const now = Date.now();
+      requestTimestamps = requestTimestamps.filter(t => now - t < RATE_WINDOW);
 
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
-  }
-  const data = await response.json();
-  if (data.status === 'error') {
-    throw new Error(data.message || 'API Error');
-  }
-  return data;
+      if (requestTimestamps.length >= RATE_LIMIT) {
+        const waitTime = RATE_WINDOW - (now - requestTimestamps[0]) + 100;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+
+      requestTimestamps.push(Date.now());
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      }
+      const data = await response.json();
+      if (data.status === 'error') {
+        throw new Error(data.message || 'API Error');
+      }
+      return data;
+    } finally {
+      // Clean up inflight map once done
+      inflightRequests.delete(url);
+    }
+  })();
+
+  inflightRequests.set(url, fetchPromise);
+  return fetchPromise;
 }
 
 // === API Methods ===
@@ -109,17 +136,22 @@ export async function fetchTimeSeries(symbol, interval = '1h', outputSize = 100)
   if (cached) return cached;
 
   const apiKey = getApiKey();
-  if (!apiKey) return generateMockTimeSeries(symbol, interval, outputSize);
+  if (!apiKey) {
+    if (symbol !== 'EUR/USD') console.log(`ℹ️ No API Key, generating mock for ${symbol}`);
+    return generateMockTimeSeries(symbol, interval, outputSize);
+  }
 
   try {
+    console.log(`🌐 Fetching LIVE time series for ${symbol} (${interval})...`);
     const data = await throttledFetch(
       `${BASE_URL}/time_series?symbol=${symbol}&interval=${interval}&outputsize=${outputSize}&apikey=${apiKey}`
     );
     const values = (data.values || []).reverse();
-    setCache(cacheKey, values);
-    return values;
+    const result = values.map(v => ({ ...v, _isMock: false }));
+    setCache(cacheKey, result);
+    return result;
   } catch (err) {
-    console.warn('Failed to fetch time series, using mock:', err);
+    console.warn(`🛑 Live fetch failed for ${symbol}: ${err.message}. Falling back to demo data.`);
     return generateMockTimeSeries(symbol, interval, outputSize);
   }
 }
@@ -276,7 +308,13 @@ const seriesCache = new Map();
 
 function generateMockTimeSeries(symbol, interval, count) {
   const cacheKey = `${symbol}_${interval}_${count}`;
-  if (seriesCache.has(cacheKey)) return seriesCache.get(cacheKey);
+  const now = Date.now();
+  
+  // Expire mock cache every 5 minutes to prevent stagnant analysis
+  const cached = seriesCache.get(cacheKey);
+  if (cached && (now - cached.timestamp < 300000)) {
+    return cached.data;
+  }
 
   const base = getBasePrice(symbol);
   const pip = getPipSize(symbol);
@@ -284,7 +322,6 @@ function generateMockTimeSeries(symbol, interval, count) {
   const candles = [];
   let price = base;
 
-  const now = Date.now();
   const intervalMs = {
     '1min': 60000,
     '5min': 300000,
@@ -315,8 +352,9 @@ function generateMockTimeSeries(symbol, interval, count) {
     price = close;
   }
 
-  seriesCache.set(cacheKey, candles);
-  return candles;
+  const result = candles.map(c => ({ ...c, _isMock: true }));
+  seriesCache.set(cacheKey, { data: result, timestamp: Date.now() });
+  return result;
 }
 
 // === Live Price Simulation ===

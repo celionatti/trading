@@ -224,9 +224,15 @@
 .header-ticker {
   display: flex;
   gap: var(--space-4);
-  overflow: hidden;
+  overflow-x: auto;
+  scrollbar-width: none; /* Hide scrollbar Firefox */
   flex: 1;
   margin: 0 var(--space-4);
+  align-items: center;
+}
+
+.header-ticker::-webkit-scrollbar {
+  display: none; /* Hide scrollbar Chrome/Safari */
 }
 
 .ticker-item {

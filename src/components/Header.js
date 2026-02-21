@@ -19,6 +19,7 @@ export function renderHeader(container) {
           <path d="M3 12h18M3 6h18M3 18h18"/>
         </svg>
       </button>
+      <div id="data-status-badge" style="flex-shrink:0;"></div>
       <div class="header-ticker" id="header-ticker">
         ${watchlist.slice(0, 6).map(pair => {
           const quote = quotes[pair];
@@ -99,6 +100,26 @@ export function renderHeader(container) {
   // Stable subscriptions
   store.subscribe('quotes', () => updateTicker(container), 'header-quotes');
   store.subscribe('equity', () => updateAccountStats(container), 'header-equity');
+  store.subscribe('settings.apiKey', () => renderStatusBadge(container), 'header-api-key');
+  
+  renderStatusBadge(container);
+}
+
+function renderStatusBadge(container) {
+  const badgeContainer = container.querySelector('#data-status-badge');
+  if (!badgeContainer) return;
+
+  const apiKey = store.get('settings.apiKey');
+  const isLive = apiKey && apiKey.length > 5;
+
+  badgeContainer.innerHTML = `
+    <div class="badge ${isLive ? 'badge-success' : 'badge-warning'} animate-pulse-soft" 
+         title="${isLive ? 'Live market data enabled' : 'Using simulated demo data'}"
+         style="margin-right:var(--space-4);font-size:var(--text-xxs);letter-spacing:0.05em;display:flex;align-items:center;gap:4px;">
+      <span style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>
+      ${isLive ? 'LIVE DATA' : 'DEMO MODE'}
+    </div>
+  `;
 }
 
 function updateTicker(container) {
