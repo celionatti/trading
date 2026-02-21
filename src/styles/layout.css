@@ -307,6 +307,12 @@
   gap: var(--space-4);
   height: 100%;
   min-height: 0;
+  transition: grid-template-columns var(--transition-base);
+}
+
+.dashboard-grid.side-collapsed {
+  grid-template-columns: 1fr 0;
+  gap: 0;
 }
 
 .dashboard-stats {
@@ -329,6 +335,13 @@
   flex-direction: column;
   gap: var(--space-4);
   overflow-y: auto;
+  transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.side-collapsed .dashboard-sidebar {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(20px);
 }
 
 .dashboard-bottom {
@@ -343,6 +356,12 @@
   gap: var(--space-4);
   height: 100%;
   min-height: 0;
+  transition: grid-template-columns var(--transition-base);
+}
+
+.trade-layout.side-collapsed {
+  grid-template-columns: 1fr 0;
+  gap: 0;
 }
 
 .trade-chart-area {
@@ -357,6 +376,13 @@
   flex-direction: column;
   gap: var(--space-4);
   overflow-y: auto;
+  transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.side-collapsed .trade-panel {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(20px);
 }
 
 /* === Positions Page === */

@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { id: 'calendar', icon: '📅', label: 'Calendar' },
   { id: 'journal', icon: '📔', label: 'Journal' },
   { id: 'analytics', icon: '📈', label: 'Analytics' },
+  { id: 'strategy', icon: '💡', label: 'Strategy' },
   { id: 'settings', icon: '⚙️', label: 'Settings' },
 ];
 
@@ -58,6 +59,7 @@ export function renderSidebar(container) {
     </nav>
 
     <div class="sidebar-footer">
+      <div id="market-sessions-container" style="margin-bottom:var(--space-4);"></div>
       <div class="sidebar-balance">
         <div class="sidebar-balance-label">Account Balance</div>
         <div class="sidebar-balance-value ${balance >= 10000 ? 'text-profit' : 'text-loss'}">
@@ -66,6 +68,15 @@ export function renderSidebar(container) {
       </div>
     </div>
   `;
+
+  // Render sub-components
+  const sessionsContainer = container.querySelector('#market-sessions-container');
+  let sessionsCleanup = null;
+  if (sessionsContainer && !collapsed) {
+    import('./MarketSessions.js').then(m => {
+      sessionsCleanup = m.renderMarketSessions(sessionsContainer);
+    });
+  }
 
   // Navigation click handlers
   container.querySelectorAll('.nav-item').forEach(el => {
@@ -98,4 +109,11 @@ export function renderSidebar(container) {
       badge.style.display = pos.length > 0 ? '' : 'none';
     }
   }, 'sidebar-positions');
+
+  return () => {
+    if (sessionsCleanup) sessionsCleanup();
+    store.unsubscribe('sidebar-page');
+    store.unsubscribe('sidebar-balance');
+    store.unsubscribe('sidebar-positions');
+  };
 }

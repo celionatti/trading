@@ -116,7 +116,13 @@ export async function generateSignalForPair(pair, timeframe = '1h') {
  * Scan all watchlist pairs and return ranked trade signals.
  */
 export async function generateTradeSignals(timeframe = '1h') {
-  const watchlist = store.get('watchlist') || [];
+  let watchlist = store.get('watchlist') || [];
+  
+  // Safety: If watchlist is empty, use some defaults for scanning
+  if (watchlist.length === 0) {
+    watchlist = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD'];
+  }
+
   const signals = [];
 
   for (const pair of watchlist) {

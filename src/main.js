@@ -23,6 +23,7 @@ import { renderSignalsPage } from './pages/SignalsPage.js';
 import { renderMultiChartPage } from './pages/MultiChartPage.js';
 import { renderCalendarPage } from './pages/CalendarPage.js';
 import { renderTradeJournal } from './pages/JournalPage.js';
+import { renderStrategyPage } from './pages/StrategyPage.js';
 
 // Services
 import store from './services/store.js';
@@ -40,6 +41,7 @@ const PAGES = {
   'multi-chart': renderMultiChartPage,
   calendar: renderCalendarPage,
   journal: renderTradeJournal,
+  strategy: renderStrategyPage,
 };
 
 let currentCleanup = null;

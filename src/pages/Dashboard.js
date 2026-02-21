@@ -15,8 +15,15 @@ export function renderDashboard(container) {
   const positions = store.get('positions') || [];
   const totalUnrealizedPL = positions.reduce((s, p) => s + p.unrealizedPL, 0);
 
+  const isCollapsed = store.get('ui.dashboardSideCollapsed') || false;
+
   container.innerHTML = `
-    <div class="dashboard-grid">
+    <div class="dashboard-grid ${isCollapsed ? 'side-collapsed' : ''}">
+      <!-- Toggle Button -->
+      <button id="dashboard-side-toggle" class="btn btn-icon btn-ghost" style="position:fixed; bottom:var(--space-6); right:var(--space-6); z-index:var(--z-modal); border-radius:50%; box-shadow:var(--shadow-lg); background:var(--bg-secondary);">
+        ${isCollapsed ? '◀' : '▶'}
+      </button>
+
       <!-- Top Stats -->
       <div class="dashboard-stats">
         <div class="stat-widget" style="border-left:3px solid var(--accent-primary);">
@@ -62,6 +69,24 @@ export function renderDashboard(container) {
   cleanups.push(renderMarketAnalysis(container.querySelector('#dashboard-analysis')));
   cleanups.push(renderWatchlist(container.querySelector('#dashboard-watchlist')));
   cleanups.push(renderPositions(container.querySelector('#dashboard-positions'), { compact: true }));
+
+  // Side Toggle Handler
+  const toggleBtn = container.querySelector('#dashboard-side-toggle');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const current = store.get('ui.dashboardSideCollapsed') || false;
+      store.set('ui.dashboardSideCollapsed', !current);
+      // Re-render to apply class (or just query and toggle class if we want to avoid full re-render)
+      const grid = container.querySelector('.dashboard-grid');
+      if (grid) {
+        const nowCollapsed = !current;
+        grid.classList.toggle('side-collapsed', nowCollapsed);
+        toggleBtn.innerHTML = nowCollapsed ? '◀' : '▶';
+        // Trigger chart resize
+        window.dispatchEvent(new Event('resize'));
+      }
+    });
+  }
 
   return () => {
     cleanups.forEach(c => c && c());

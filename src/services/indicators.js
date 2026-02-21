@@ -243,14 +243,24 @@ export function generateSignal(candles) {
     score -= 0.5;
   }
 
-  const maxScore = 6.5;
-  const strength = Math.min(100, Math.abs(score / maxScore) * 100);
+  // Volatility check
+  const atr = calculateATR(candles);
+  const latestATR = atr.filter(v => v !== null).pop();
+  const avgATR = atr.filter(v => v !== null).slice(-20).reduce((s,v) => s+v, 0) / 20;
+  const highVol = latestATR > avgATR * 1.2;
+  const lowVol = latestATR < avgATR * 0.8;
+
+  if (highVol) reasons.push('High volatility detected (ATR expanding)');
+  if (lowVol) reasons.push('Low volatility / Consolidation');
+
+  const maxScore = 5.0; // Adjusted max score
+  const strength = Math.min(100, Math.max(0, (Math.abs(score) / maxScore) * 100));
   let signal;
 
-  if (score >= 3) signal = 'strong_buy';
-  else if (score >= 1.5) signal = 'buy';
-  else if (score <= -3) signal = 'strong_sell';
-  else if (score <= -1.5) signal = 'sell';
+  if (score >= 2.0) signal = 'strong_buy';
+  else if (score >= 1.0) signal = 'buy';
+  else if (score <= -2.0) signal = 'strong_sell';
+  else if (score <= -1.0) signal = 'sell';
   else signal = 'neutral';
 
   return { signal, strength: Math.round(strength), reasons, score, rsi: latestRSI };
